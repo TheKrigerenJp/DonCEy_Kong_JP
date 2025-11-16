@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Server.ui.AdminWindowController"
+            prefWidth="900" prefHeight="420">
+
+    <!-- Título principal -->
+    <children>
+        <Label layoutX="310.0" layoutY="15.0"
+               text="Panel de control - DonCEy Kong Jr."
+               style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+
+        <!-- Bloque izquierda: ENEMIGOS -->
+        <TitledPane text="Gestión de enemigos"
+                    layoutX="30.0" layoutY="70.0"
+                    prefWidth="350.0" prefHeight="170.0"
+                    collapsible="false">
+            <content>
+                <GridPane hgap="10" vgap="8">
+                    <padding>
+                        <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+                    </padding>
+
+                    <columnConstraints>
+                        <ColumnConstraints percentWidth="40"/>
+                        <ColumnConstraints percentWidth="60"/>
+                    </columnConstraints>
+
+                    <children>
+                        <Label text="Tipo de cocodrilo:"
+                               GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <ChoiceBox fx:id="crocTypeChoiceBox"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"
+                                   prefWidth="160"/>
+
+                        <Label text="Columna (liana):"
+                               GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="crocLianaField"
+                                   promptText="ej: 3"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Altura (fila):"
+                               GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <TextField fx:id="crocYField"
+                                   promptText="ej: 5"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                        <Button text="Añadir enemigo"
+                                fx:id="createCrocButton"
+                                onAction="#onCreateCrocodile"
+                                maxWidth="Infinity"
+                                GridPane.rowIndex="3" GridPane.columnIndex="0"
+                                GridPane.columnSpan="2"/>
+                    </children>
+                </GridPane>
+            </content>
+        </TitledPane>
+
+        <!-- Bloque derecha: FRUTAS -->
+        <TitledPane text="Frutas y bonificadores"
+                    layoutX="420.0" layoutY="70.0"
+                    prefWidth="350.0" prefHeight="170.0"
+                    collapsible="false">
+            <content>
+                <GridPane hgap="10" vgap="8">
+                    <padding>
+                        <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+                    </padding>
+
+                    <columnConstraints>
+                        <ColumnConstraints percentWidth="40"/>
+                        <ColumnConstraints percentWidth="60"/>
+                    </columnConstraints>
+
+                    <children>
+                        <Label text="Columna (liana):"
+                               GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <TextField fx:id="fruitLianaField"
+                                   promptText="ej: 4"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="Altura (fila):"
+                               GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="fruitYField"
+                                   promptText="ej: 6"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Puntaje:"
+                               GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <TextField fx:id="fruitPointsField"
+                                   promptText="ej: 100"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                        <HBox spacing="10"
+                              GridPane.rowIndex="3" GridPane.columnIndex="0"
+                              GridPane.columnSpan="2">
+                            <children>
+                                <Button text="Crear fruta"
+                                        fx:id="createFruitButton"
+                                        onAction="#onCreateFruit"
+                                        maxWidth="Infinity"/>
+                                <Button text="Quitar fruta"
+                                        fx:id="deleteFruitButton"
+                                        onAction="#onDeleteFruit"
+                                        maxWidth="Infinity"/>
+                            </children>
+                        </HBox>
+                    </children>
+                </GridPane>
+            </content>
+        </TitledPane>
+
+        <!-- Bloque inferior: LOG / Consola -->
+        <TitledPane text="Actividad del servidor"
+                    layoutX="30.0" layoutY="260.0"
+                    prefWidth="740.0" prefHeight="130.0"
+                    collapsible="false">
+            <content>
+                <VBox spacing="5">
+                    <padding>
+                        <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+                    </padding>
+                    <children>
+                        <TextArea fx:id="logArea"
+                                  prefRowCount="3"
+                                  wrapText="true"
+                                  editable="false"/>
+                    </children>
+                </VBox>
+            </content>
+        </TitledPane>
+    </children>
+</AnchorPane>
