@@ -14,19 +14,19 @@ public abstract class Fruit {
      *
      * @return coordenada X de la fruta (por ejemplo, índice de liana o columna del mapa)
      */
-    public abstract int getX();
+    public abstract Integer getX();
 
     /**
      * Obtiene la posición vertical de la fruta.
      *
      * @return coordenada Y de la fruta (por ejemplo, fila o altura dentro del mapa)
      */
-    public abstract int getY();
+    public abstract Integer getY();
 
     /**
      * Obtiene la cantidad de puntos que otorga la fruta al ser recogida.
      *
      * @return número de puntos que suma al marcador del jugador
      */
-    public abstract int getPoints();
+    public abstract Integer getPoints();
 }

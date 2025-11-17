@@ -21,7 +21,7 @@ public abstract class GameElementFactory {
      * @param y     posición vertical inicial del enemigo
      * @return instancia concreta de {@link Enemy} correspondiente al tipo solicitado
      */
-    public abstract Enemy createCrocodile(String type, int liana, int y);
+    public abstract Enemy createCrocodile(String type, Integer liana, Integer y);
 
     /**
      * Crea una nueva fruta con la posición y puntos indicados.
@@ -31,7 +31,7 @@ public abstract class GameElementFactory {
      * @param points cantidad de puntos que otorgará la fruta
      * @return instancia concreta de {@link Fruit} creada por la fábrica
      */
-    public abstract Fruit createFruit(int liana, int y, int points);
+    public abstract Fruit createFruit(Integer liana, Integer y, Integer points);
 }
 
 

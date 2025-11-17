@@ -10,19 +10,19 @@ package Server;
  */
 public class Player {
     /** Identificador único del jugador dentro del servidor. */
-    public final int id;
+    public final Integer id;
     /** Nombre o alias del jugador. */
     public final String name;
     /** Coordenadas actuales del jugador en el mapa (x, y). */
-    public int x, y;
+    public Integer x, y;
     /** Último número de secuencia de input reconocido/acknowledgeado por el servidor. */
-    public int lastAckSeq;
+    public Integer lastAckSeq;
     /** Puntaje acumulado por el jugador. */
-    public int score;
+    public Integer score;
     /** Ronda o nivel actual del jugador. */
-    public int round;
+    public Integer round;
     /** Indica si el juego ha terminado para este jugador. */
-    public boolean gameOver;   
+    public Boolean gameOver;   
 
     /**
      * Crea un nuevo jugador con los valores iniciales por defecto.
@@ -30,7 +30,7 @@ public class Player {
      * @param id    identificador único asignado por el servidor
      * @param name  nombre o alias con el que el jugador se identifica
      */
-    public Player(int id, String name) {
+    public Player(Integer id, String name) {
         this.id = id;
         this.name = name;
         this.x = 0;

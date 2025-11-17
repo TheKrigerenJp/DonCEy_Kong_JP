@@ -9,11 +9,11 @@ package Server.entities;
  */
 public class SimpleFruit extends Fruit {
     /** Columna o liana donde se ubica la fruta. */
-    private final int liana;
+    private final Integer liana;
     /** Posición vertical de la fruta. */
-    private final int y;
+    private final Integer y;
     /** Puntos que otorga la fruta al ser recogida. */
-    private final int points;
+    private final Integer points;
 
     /**
      * Crea una fruta simple.
@@ -22,7 +22,7 @@ public class SimpleFruit extends Fruit {
      * @param y      coordenada Y o altura donde se ubicará la fruta
      * @param points cantidad de puntos que otorga al jugador
      */
-    public SimpleFruit(int liana, int y, int points) {
+    public SimpleFruit(Integer liana, Integer y, Integer points) {
         this.liana = liana;
         this.y = y;
         this.points = points;
@@ -34,7 +34,7 @@ public class SimpleFruit extends Fruit {
      * @return coordenada X (liana o columna) donde se encuentra la fruta
      */
     @Override
-    public int getX() {
+    public Integer getX() {
         return liana;
     }
 
@@ -44,7 +44,7 @@ public class SimpleFruit extends Fruit {
      * @return coordenada Y donde se encuentra la fruta
      */
     @Override
-    public int getY() {
+    public Integer getY() {
         return y;
     }
 
@@ -54,7 +54,7 @@ public class SimpleFruit extends Fruit {
      * @return número de puntos sumados al marcador del jugador
      */
     @Override
-    public int getPoints() {
+    public Integer getPoints() {
         return points;
     }
 }

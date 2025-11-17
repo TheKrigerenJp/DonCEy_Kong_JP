@@ -48,8 +48,8 @@ public class ClientHandler implements Runnable {
      * </p>
      * <ul>
      *     <li>{@code JOIN &lt;nombre&gt;} → {@link Server#onJoin(ClientHandler, String)}</li>
-     *     <li>{@code INPUT &lt;seq&gt; &lt;dx&gt; &lt;dy&gt;} → {@link Server#onInput(ClientHandler, int, int, int)}</li>
-     *     <li>{@code SPECTATE &lt;idJugador&gt;} → {@link Server#onSpectate(ClientHandler, int)}</li>
+     *     <li>{@code INPUT &lt;seq&gt; &lt;dx&gt; &lt;dy&gt;} → {@link Server#onInput(ClientHandler, Integer, Integer, Integer)}</li>
+     *     <li>{@code SPECTATE &lt;idJugador&gt;} → {@link Server#onSpectate(ClientHandler, Integer)}</li>
      *     <li>{@code PING} → responde con {@code PONG}</li>
      *     <li>{@code QUIT} → responde con {@code BYE} y cierra la conexión</li>
      * </ul>
@@ -72,16 +72,16 @@ public class ClientHandler implements Runnable {
                     // INPUT <seq> <dx> <dy>
                     String[] t = line.split("\\s+");
                     if (t.length >= 4) {
-                        int seq = Integer.parseInt(t[1]);
-                        int dx  = Integer.parseInt(t[2]);
-                        int dy  = Integer.parseInt(t[3]);
+                        Integer seq = Integer.parseInt(t[1]);
+                        Integer dx  = Integer.parseInt(t[2]);
+                        Integer dy  = Integer.parseInt(t[3]);
                         server.onInput(this, seq, dx, dy);
                     } else {
                         sendLine("ERR BAD_INPUT\n");
                     }
                 } else if (line.startsWith("SPECTATE ")) {
                     try {
-                        int pid = Integer.parseInt(line.substring(9).trim());
+                        Integer pid = Integer.parseInt(line.substring(9).trim());
                         server.onSpectate(this, pid);
                     } catch (NumberFormatException e) {
                         sendLine("ERR BAD_SPECTATE\n");

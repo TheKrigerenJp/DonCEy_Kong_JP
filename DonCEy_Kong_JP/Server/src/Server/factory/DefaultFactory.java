@@ -30,7 +30,7 @@ public class DefaultFactory extends GameElementFactory {
      * @return instancia de {@link RedCroc} o {@link BlueCroc}, según el tipo
      */
     @Override
-    public Enemy createCrocodile(String type, int liana, int y) {
+    public Enemy createCrocodile(String type, Integer liana, Integer y) {
         if ("RED".equalsIgnoreCase(type)) {
             return new RedCroc(liana, y);
         }
@@ -46,7 +46,7 @@ public class DefaultFactory extends GameElementFactory {
      * @return instancia de {@link SimpleFruit} creada con los parámetros dados
      */
     @Override
-    public Fruit createFruit(int liana, int y, int points) {
+    public Fruit createFruit(Integer liana, Integer y, Integer points) {
         return new SimpleFruit(liana, y, points);
     }
 }

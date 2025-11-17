@@ -21,11 +21,11 @@ import Server.entities.SimpleFruit;
  */
 public class GameSession {
     /** ID del jugador al que pertenece esta sesión. */
-    public final int playerId;
+    public final Integer playerId;
     /** Coordenadas de aparición (spawn) del jugador en el mapa. */
-    public int spawnX, spawnY;
+    public Integer spawnX, spawnY;
     /** Coordenadas de la meta (goal) para el jugador. */
-    public int goalX, goalY;
+    public Integer goalX, goalY;
     /** Lista de enemigos activos en la sesión de este jugador. */
     public final CopyOnWriteArrayList<Enemy> enemies = new CopyOnWriteArrayList<>();
     /** Lista de frutas activas en la sesión de este jugador. */
@@ -35,7 +35,7 @@ public class GameSession {
      * “Velocidad lógica” de enemigos para este jugador (pasos por tick).
      * Puede ajustarse para aumentar o disminuir la dificultad de la sesión.
      */
-    public int enemySpeedSteps = 1;
+    public Integer enemySpeedSteps = 1;
 
     /**
      * Crea una nueva sesión de juego para el jugador indicado,
@@ -43,7 +43,7 @@ public class GameSession {
      *
      * @param playerId identificador del jugador dueño de esta sesión
      */
-    public GameSession(int playerId) { 
+    public GameSession(Integer playerId) { 
         this.playerId = playerId;
         this.spawnX = 0;  // S está en x=0, y=1
         this.spawnY = 1;

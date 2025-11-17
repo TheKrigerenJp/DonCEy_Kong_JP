@@ -9,11 +9,11 @@ package Server.entities;
  */
 public class RedCroc extends Enemy {
     /** Liana o columna del mapa donde se ubica el cocodrilo. */
-    private final int liana;
+    private final Integer liana;
     /** Posición vertical actual del cocodrilo. */
-    private int y;
+    private Integer y;
     /** Dirección de movimiento: +1 hacia abajo, -1 hacia arriba. */
-    private int dir = +1;
+    private Integer dir = +1;
 
     /**
      * Crea un nuevo cocodrilo rojo.
@@ -21,7 +21,7 @@ public class RedCroc extends Enemy {
      * @param liana columna o liana donde se colocará el enemigo
      * @param y     posición vertical inicial del enemigo dentro de la liana
      */
-    public RedCroc(int liana, int y) {
+    public RedCroc(Integer liana, Integer y) {
         this.liana = liana;
         this.y = y;
     }
@@ -37,7 +37,7 @@ public class RedCroc extends Enemy {
      * @param maxY valor máximo permitido de la coordenada Y
      */
     @Override
-    public void tick(int minY, int maxY) {
+    public void tick(Integer minY, Integer maxY) {
         y += dir;
         if (y <= minY) {
             y = minY;
@@ -55,7 +55,7 @@ public class RedCroc extends Enemy {
      * @return coordenada X (liana o columna) donde se encuentra el cocodrilo
      */
     @Override
-    public int getX() {
+    public Integer getX() {
         return liana;
     }
 
@@ -65,7 +65,7 @@ public class RedCroc extends Enemy {
      * @return coordenada Y actual del cocodrilo
      */
     @Override
-    public int getY() {
+    public Integer getY() {
         return y;
     }
 
