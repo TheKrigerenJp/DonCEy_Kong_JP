@@ -34,6 +34,15 @@ typedef struct {
     char tiles[MAX_MAP_HEIGHT][MAX_MAP_WIDTH + 1]; /* +1 por seguridad con '\0' */
 } GameMap;
 
+
+#define MAX_PLAYERS 16
+
+typedef struct {
+    int  id;
+    char name[32];
+} PlayerInfo;
+
+
 // ---------------- Constantes generales de ventana ----------------
 
 /**
@@ -104,6 +113,10 @@ typedef struct {
     int playerY;
     int score;
     int gameOver;
+
+    int        numPlayers;
+    PlayerInfo players[MAX_PLAYERS];
+
 } ClientState;
 
 

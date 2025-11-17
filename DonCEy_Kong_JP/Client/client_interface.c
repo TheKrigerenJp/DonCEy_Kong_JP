@@ -103,6 +103,152 @@ static int receive_initial_map(ClientState *state)
     return 0;
 }
 
+/**
+ * Solicita al servidor la lista de jugadores activos y la almacena en state->players.
+ *
+ * Protocolo esperado del servidor:
+ *  - "PLAYERS_BEGIN"
+ *  - "PLAYER <id> <name>"  (cero o más líneas)
+ *  - "PLAYERS_END"
+ *
+ * Cualquier otra línea se ignora. Si no se recibe PLAYERS_BEGIN/END
+ * correctamente, se considera error.
+ *
+ * @param state Puntero al estado del cliente con el socket conectado.
+ * @return 0 si la lista se recibió correctamente, -1 en caso de error.
+ */
+static int fetch_player_list(ClientState *state)
+{
+    char line[256];
+    int gotBegin = 0;
+
+    state->numPlayers = 0;
+
+    /* Enviar la solicitud al servidor */
+    send_line(state->socket_fd, "LIST_PLAYERS\n");
+
+    for (;;) {
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            return -1;
+        }
+
+        if (strncmp(line, "PLAYERS_BEGIN", 13) == 0) {
+            gotBegin = 1;
+            continue;
+        }
+
+        if (strncmp(line, "PLAYERS_END", 11) == 0) {
+            /* Termina el listado */
+            break;
+        }
+
+        if (!gotBegin) {
+            /* Si llega algo antes de PLAYERS_BEGIN, lo ignoramos */
+            continue;
+        }
+
+        /* Intentar parsear "PLAYER <id> <name>" */
+        int id = 0;
+        char name[32];
+
+        if (sscanf(line, "PLAYER %d %31s", &id, name) == 2) {
+            if (state->numPlayers < MAX_PLAYERS) {
+                state->players[state->numPlayers].id = id;
+                strncpy(state->players[state->numPlayers].name, name, 31);
+                state->players[state->numPlayers].name[31] = '\0';
+                state->numPlayers++;
+            }
+        }
+        /* Cualquier otra cosa se ignora */
+    }
+
+    return 0;
+}
+
+/**
+ * Muestra una pantalla de selección de jugador para modo espectador.
+ *
+ * - Internamente llama a fetch_player_list() para pedir la lista al servidor.
+ * - Si no hay jugadores activos, devuelve -1.
+ * - El usuario puede moverse con flechas ARRIBA/ABAJO y confirmar con ENTER.
+ * - Con ESC se cancela y se devuelve -1 (volver al menú principal).
+ *
+ * @param state Puntero al estado del cliente (usa el socket para pedir la lista).
+ * @return ID del jugador seleccionado en caso de éxito, o -1 si se cancela
+ *         o no hay jugadores activos.
+ */
+static int select_spectator_target(ClientState *state)
+{
+    if (fetch_player_list(state) != 0) {
+        return -1;
+    }
+
+    if (state->numPlayers == 0) {
+        /* No hay jugadores para observar */
+        while (!WindowShouldClose()) {
+            BeginDrawing();
+                ClearBackground((Color){ 10, 10, 30, 255 });
+                DrawText("No hay jugadores activos para espectar.",
+                         80, 200, 20, RAYWHITE);
+                DrawText("Presiona ESC para volver al menu.",
+                         80, 240, 18, LIGHTGRAY);
+            EndDrawing();
+
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                break;
+            }
+        }
+        return -1;
+    }
+
+    int selected = 0;
+
+    while (!WindowShouldClose()) {
+        if (IsKeyPressed(KEY_UP)) {
+            selected--;
+            if (selected < 0) selected = state->numPlayers - 1;
+        }
+        if (IsKeyPressed(KEY_DOWN)) {
+            selected++;
+            if (selected >= state->numPlayers) selected = 0;
+        }
+
+        if (IsKeyPressed(KEY_ENTER)) {
+            return state->players[selected].id;
+        }
+
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            /* Cancelar selección y volver al menú principal */
+            return -1;
+        }
+
+        BeginDrawing();
+            ClearBackground((Color){ 10, 10, 30, 255 });
+
+            DrawText("Selecciona jugador para espectar",
+                     60, 60, 24, RAYWHITE);
+            DrawText("Flechas ARRIBA/ABAJO para moverte, ENTER para escoger, ESC para volver",
+                     60, 100, 16, LIGHTGRAY);
+
+            for (int i = 0; i < state->numPlayers; i++) {
+                int y = 150 + i * 30;
+                Color color = (i == selected) ? YELLOW : RAYWHITE;
+
+                char line[128];
+                snprintf(line, sizeof(line), "ID %d - %s",
+                         state->players[i].id,
+                         state->players[i].name);
+
+                DrawText(line, 80, y, 20, color);
+            }
+
+        EndDrawing();
+    }
+
+    return -1;
+}
+
 
 /* ============================
  *  D I B U J A R   E S C E N A
@@ -350,13 +496,18 @@ void run_player_mode(ClientState *state)
  * Bucle principal del cliente en modo espectador.
  *
  * Flujo:
- *  1) Envía "SPECTATE <playerId>" (de momento ID fijo 1).
- *  2) Espera una respuesta "SPECTATE_OK <playerId>".
- *  3) Recibe el mapa inicial mediante receive_initial_map().
+ *  1) Envía "SPECTATE <playerId>" (por ahora un ID fijo, p.ej. 1).
+ *  2) Busca en las líneas del servidor una respuesta "SPECTATE_OK <playerId>"
+ *     e inicializa state->playerId con ese valor.
+ *     - Si recibe "SPECTATE_WAIT <playerId>", devuelve y finaliza el modo
+ *       espectador (el jugador aún no existe).
+ *  3) Recibe el mapa inicial mediante receive_initial_map(), que es robusta
+ *     ante líneas adicionales.
  *  4) Entra en un bucle donde:
- *      - Lee líneas "STATE ..." del servidor.
- *      - Actualiza la posición/score del jugador observado.
- *      - Dibuja la escena con raylib.
+ *      - Lee líneas "STATE seq id x y score gameOver".
+ *      - Si el id coincide con state->playerId, actualiza la posición y
+ *        puntuación del jugador observado.
+ *      - Dibuja el mapa y la posición del jugador usando raylib.
  *
  * @param state Puntero al estado del cliente ya inicializado y con el socket
  *              conectado al servidor.
@@ -366,22 +517,41 @@ void run_spectator_mode(ClientState *state)
     char line[256];
     char cmd[128];
 
-    int playerId = 1;   /* Por ahora observamos siempre al jugador 1 */
+    /* 1) Dejar que el usuario escoja a quién espectar */
+    int targetId = select_spectator_target(state);
+    if (targetId < 0) {
+        /* Usuario canceló o no hay jugadores activos */
+        return;
+    }
 
-    snprintf(cmd, sizeof(cmd), "SPECTATE %d\n", playerId);
+    /* 2) Enviar SPECTATE <targetId> al servidor */
+    snprintf(cmd, sizeof(cmd), "SPECTATE %d\n", targetId);
     send_line(state->socket_fd, cmd);
 
-    /* Esperar "SPECTATE_OK <id>" (ignoramos SPECTATE_WAIT por simplicidad) */
-    if (recv_line(state->socket_fd, line, sizeof(line)) <= 0) {
-        return;
+    /* 3) Esperar "SPECTATE_OK <id>" o "SPECTATE_WAIT <id>" */
+    state->playerId = 0;
+    for (;;) {
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            /* Desconexión / error */
+            return;
+        }
+
+        int id = 0;
+        if (sscanf(line, "SPECTATE_OK %d", &id) == 1) {
+            state->playerId = id;
+            break; /* listo, seguimos con el mapa */
+        }
+
+        if (sscanf(line, "SPECTATE_WAIT %d", &id) == 1) {
+            /* El jugador todavía no existe o se fue justo ahora */
+            return;
+        }
+
+        /* Cualquier otra línea se ignora en esta fase */
     }
 
-    if (sscanf(line, "SPECTATE_OK %d", &state->playerId) != 1) {
-        /* Si no es OK, terminamos */
-        return;
-    }
-
-    /* Recibir mapa inicial */
+    /* 4) Recibir mapa inicial (robusto ante líneas extra) */
     if (receive_initial_map(state) != 0) {
         return;
     }
@@ -391,15 +561,24 @@ void run_spectator_mode(ClientState *state)
     state->score    = 0;
     state->gameOver = 0;
 
+    /* 5) Bucle de renderizado en modo espectador */
     while (!WindowShouldClose()) {
 
-        if (recv_line(state->socket_fd, line, sizeof(line)) <= 0) {
+        /* Permitir salir al menú principal con ESC */
+        if (IsKeyPressed(KEY_ESCAPE)) {
             break;
         }
 
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            break; /* desconexión o error */
+        }
+
+        /* Podemos recibir muchas cosas, pero solo nos interesa STATE */
         char tag[16];
         char gameOverStr[8];
         int  s, pid, x, y, score;
+
         if (sscanf(line, "%15s %d %d %d %d %d %7s",
                    tag, &s, &pid, &x, &y, &score, gameOverStr) == 7 &&
             strcmp(tag, "STATE") == 0) {
@@ -411,12 +590,16 @@ void run_spectator_mode(ClientState *state)
                 state->gameOver = (strcmp(gameOverStr, "true") == 0);
             }
         }
+        /* Si no es STATE, lo ignoramos */
 
         BeginDrawing();
             draw_game_scene(state);
         EndDrawing();
     }
+
+    /* Al salir del bucle, simplemente volvemos al menú principal */
 }
+
 
 /* ============================
  *  P U N T O   D E   E N T R A D A

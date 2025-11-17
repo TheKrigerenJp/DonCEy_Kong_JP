@@ -88,6 +88,21 @@ public class Server {
     /** Conjunto de {@link ClientHandler} que actualmente están actuando como jugadores. */
     private final Set<ClientHandler> playerClients =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
+    /**
+     * Mapa de listas de espectadores por jugador.
+     *
+     * <p>La clave del mapa es el {@code playerId} y el valor es una lista de
+     * {@link ClientHandler} que están recibiendo actualizaciones del estado
+     * de ese jugador.</p>
+     *
+     * <p>Esta estructura implementa el patrón de diseño <b>Observador</b>:
+     * cada jugador (identificado por su {@code playerId}) actúa como
+     * <em>sujeto observado</em>, mientras que los clientes registrados en la
+     * lista asociada se comportan como <em>observadores</em>. En cada ciclo
+     * de juego ({@link #tick()}), el servidor notifica el nuevo estado del
+     * jugador a todos sus observadores mediante
+     * {@link #sendToPlayerAndSpectators(Integer, String)}.</p>
+     */
     private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<ClientHandler>> spectatorsByPlayer =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<ClientHandler>> waitingSpectatorsByPlayer =
@@ -362,40 +377,28 @@ public class Server {
     /**
      * Maneja la solicitud de un cliente para unirse como espectador de un jugador.
      *
-     * <p>Comportamiento según el estado del jugador objetivo:</p>
+     * <p>Desde el punto de vista del patrón de diseño <b>Observador</b>, este
+     * método realiza la operación de <em>suscripción</em> de un nuevo
+     * observador:</p>
      * <ul>
-     *     <li>Si el jugador con {@code playerId} existe:
-     *         <ul>
-     *             <li>Se añade el cliente a la lista de espectadores asociados
-     *                 a ese jugador.</li>
-     *             <li>Se envía la línea <code>SPECTATE_OK &lt;playerId&gt;</code>
-     *                 para confirmar que la suscripción fue exitosa.</li>
-     *             <li>A continuación, se envía la descripción completa del mapa
-     *                 lógico mediante {@link #sendMapTo(ClientHandler)}, de modo
-     *                 que el espectador pueda dibujar el mismo escenario que el
-     *                 jugador observado.</li>
-     *         </ul>
-     *     </li>
-     *     <li>Si el jugador con {@code playerId} aún no existe:
-     *         <ul>
-     *             <li>El cliente se añade a la lista de espera de espectadores
-     *                 en {@link #waitingSpectatorsByPlayer}.</li>
-     *             <li>Se envía la línea
-     *                 <code>SPECTATE_WAIT &lt;playerId&gt;</code> indicando que
-     *                 debe esperar a que el jugador inicie una sesión.</li>
-     *             <li>En este caso no se envía todavía el mapa; será responsabilidad
-     *                 de la lógica que promueva al espectador desde la lista de
-     *                 espera enviarle el mapa cuando corresponda.</li>
-     *         </ul>
-     *     </li>
+     *     <li>El jugador identificado por {@code playerId} actúa como
+     *         <em>sujeto observado</em> (su estado se actualizará en cada tick).</li>
+     *     <li>El {@link ClientHandler} {@code c} se registra como uno de sus
+     *         <em>observadores</em> en la estructura
+     *         {@link #spectatorsByPlayer}.</li>
      * </ul>
+     *
+     * <p>Si el jugador ya existe, el cliente se añade directamente a la lista
+     * de espectadores y se le envía la confirmación
+     * <code>SPECTATE_OK &lt;playerId&gt;</code>, seguida del mapa lógico
+     * mediante {@link #sendMapTo(ClientHandler)}. Si el jugador aún no existe,
+     * el cliente se inserta en {@link #waitingSpectatorsByPlayer} y se le
+     * responde <code>SPECTATE_WAIT &lt;playerId&gt;</code>.</p>
      *
      * @param c
      *     Manejador del cliente que solicita unirse como espectador.
      * @param playerId
-     *     Identificador del jugador cuya sesión se desea observar. Este ID debe
-     *     corresponder a un jugador actualmente registrado en {@link #players}
-     *     para que la suscripción se complete inmediatamente.
+     *     Identificador del jugador cuya sesión se desea observar.
      */
     public void onSpectate(ClientHandler c, Integer playerId) {
         Player p = players.get(playerId);
@@ -415,6 +418,56 @@ public class Server {
             c.sendLine("SPECTATE_WAIT " + playerId + "\n");
         }
     }
+
+    /**
+     * Envía al cliente la lista de jugadores actualmente activos en el servidor.
+     *
+     * <p>El formato del mensaje enviado implementa un pequeño protocolo de
+     * listado de jugadores:</p>
+     *
+     * <pre>
+     * PLAYERS_BEGIN
+     * PLAYER &lt;id&gt; &lt;name&gt;
+     * PLAYER &lt;id&gt; &lt;name&gt;
+     * ...
+     * PLAYERS_END
+     * </pre>
+     *
+     * <p>La intención es que un cliente (por ejemplo, en modo espectador)
+     * pueda solicitar esta lista para permitir al usuario seleccionar a qué
+     * jugador desea observar. Este método únicamente envía información al
+     * {@link ClientHandler} indicado; no modifica el estado interno del
+     * servidor.</p>
+     *
+     * @param clientHandler
+     *     Manejador del cliente que solicitó la lista de jugadores. Si es
+     *     {@code null}, este método no realiza ninguna acción.
+     */
+    public void onListPlayers(ClientHandler clientHandler) {
+        if (clientHandler == null) {
+            return;
+        }
+
+        clientHandler.sendLine("PLAYERS_BEGIN\n");
+
+        // Recorremos el mapa de jugadores activos y enviamos un renglón por cada uno
+        players.forEach((id, player) -> {
+            // Usamos directamente el campo público 'name' del jugador
+            String name = player.name;
+            clientHandler.sendLine(
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "PLAYER %d %s%n",
+                            id,
+                            name
+                    )
+            );
+        });
+
+        clientHandler.sendLine("PLAYERS_END\n");
+    }
+
+
 
 
     /**
@@ -469,12 +522,26 @@ public class Server {
     }
 
     /**
-     * Envía una línea de texto a un jugador y a todos los espectadores asociados.
-     * <p>Si el jugador no existe o no tiene clientes asociados, la llamada no
-     * realiza ninguna acción.</p>
+     * Envía una línea de texto al jugador y a todos los espectadores asociados.
      *
-     * @param playerId identificador del jugador dueño de la sesión
-     * @param line     línea de texto a enviar (debe incluir el salto de línea si se requiere)
+     * <p>Este método actúa como la operación de "notificación" dentro del
+     * patrón de diseño <b>Observador</b>. Para el {@code playerId} indicado,
+     * se localiza:</p>
+     * <ul>
+     *     <li>El cliente jugador asociado, usando el mapa {@link #byClient}.</li>
+     *     <li>Todos los clientes espectadores registrados en
+     *         {@link #spectatorsByPlayer}.</li>
+     * </ul>
+     *
+     * <p>A cada uno de estos observadores se le envía la misma línea
+     * de texto, que típicamente corresponde a un mensaje de estado como
+     * <code>STATE ...</code>. De esta forma, el jugador y sus espectadores
+     * reciben una vista consistente del estado de la partida.</p>
+     *
+     * @param playerId
+     *     Identificador del jugador cuya sesión es la fuente de la actualización.
+     * @param line
+     *     Línea de texto a enviar (debe incluir el salto de línea si se requiere).
      */
     private void sendToPlayerAndSpectators(Integer playerId, String line) {
         // a jugador:

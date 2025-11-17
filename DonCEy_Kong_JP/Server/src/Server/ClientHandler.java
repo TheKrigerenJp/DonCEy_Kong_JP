@@ -47,9 +47,14 @@ public class ClientHandler implements Runnable {
      * distintos métodos del servidor:
      * </p>
      * <ul>
-     *     <li>{@code JOIN &lt;nombre&gt;} → {@link Server#onJoin(ClientHandler, String)}</li>
-     *     <li>{@code INPUT &lt;seq&gt; &lt;dx&gt; &lt;dy&gt;} → {@link Server#onInput(ClientHandler, Integer, Integer, Integer)}</li>
-     *     <li>{@code SPECTATE &lt;idJugador&gt;} → {@link Server#onSpectate(ClientHandler, Integer)}</li>
+     *     <li>{@code JOIN &lt;nombre&gt;}
+     *         → {@link Server#onJoin(ClientHandler, String)}</li>
+     *     <li>{@code INPUT &lt;seq&gt; &lt;dx&gt; &lt;dy&gt;}
+     *         → {@link Server#onInput(ClientHandler, Integer, Integer, Integer)}</li>
+     *     <li>{@code SPECTATE &lt;idJugador&gt;}
+     *         → {@link Server#onSpectate(ClientHandler, Integer)}</li>
+     *     <li>{@code LIST_PLAYERS}
+     *         → {@link Server#onListPlayers(ClientHandler)}</li>
      *     <li>{@code PING} → responde con {@code PONG}</li>
      *     <li>{@code QUIT} → responde con {@code BYE} y cierra la conexión</li>
      * </ul>
@@ -68,6 +73,7 @@ public class ClientHandler implements Runnable {
 
                 if (line.startsWith("JOIN ")) {
                     server.onJoin(this, line.substring(5).trim());
+
                 } else if (line.startsWith("INPUT ")) {
                     // INPUT <seq> <dx> <dy>
                     String[] t = line.split("\\s+");
@@ -79,6 +85,7 @@ public class ClientHandler implements Runnable {
                     } else {
                         sendLine("ERR BAD_INPUT\n");
                     }
+
                 } else if (line.startsWith("SPECTATE ")) {
                     try {
                         Integer pid = Integer.parseInt(line.substring(9).trim());
@@ -86,15 +93,23 @@ public class ClientHandler implements Runnable {
                     } catch (NumberFormatException e) {
                         sendLine("ERR BAD_SPECTATE\n");
                     }
+
+                } else if (line.equalsIgnoreCase("LIST_PLAYERS")) {
+                    // Nuevo comando: el cliente solicita la lista de jugadores activos
+                    server.onListPlayers(this);
+
                 } else if (line.equalsIgnoreCase("PING")) {
                     sendLine("PONG\n");
+
                 } else if (line.equalsIgnoreCase("QUIT")) {
                     sendLine("BYE\n");
                     break;
+
                 } else {
                     sendLine("ERR UNKNOWN\n");
                 }
             }
+
         } catch (IOException e) {
             System.out.println("[JAVA] Cliente desconectado: " + e.getMessage());
         } finally {
