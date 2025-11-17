@@ -294,29 +294,53 @@ public class Server {
     /* ========= Eventos desde ClientHandler ========= */
 
     /**
-     * Maneja una solicitud de JOIN de un cliente.
+     * Maneja una solicitud de JOIN de un cliente para participar como jugador.
      *
-     * @param c       manejador del cliente que envía la solicitud
-     * @param name    nombre de jugador solicitado
+     * <p>Flujo general:</p>
+     * <ol>
+     *     <li>Genera un nuevo identificador de jugador y crea la instancia
+     *         correspondiente de {@link Player} y {@link GameSession}.</li>
+     *     <li>Envía al cliente la línea de confirmación
+     *         <code>JOINED &lt;playerId&gt;</code> seguida de la descripción
+     *         completa del mapa lógico mediante {@link #sendMapTo(ClientHandler)}.
+     *         En este punto, el cliente ya dispone de toda la información
+     *         necesaria para dibujar el escenario.</li>
+     *     <li>Registra finalmente al jugador en las estructuras internas
+     *         {@link #players}, {@link #sessions} y {@link #byClient}, de modo
+     *         que el bucle de juego {@link #tick()} pueda empezar a enviar
+     *         mensajes de estado <code>STATE ...</code>.</li>
+     * </ol>
+     *
+     * @param c
+     *     Manejador del cliente que envía la solicitud de unión como jugador.
+     * @param name
+     *     Nombre de jugador solicitado. Se almacenará en la instancia
+     *     correspondiente de {@link Player}.
      */
     public void onJoin(ClientHandler c, String name) {
         Integer id = nextId.getAndIncrement();
         Player p = new Player(id, name);
+
+        // Crear sesión de juego (aún no registrada globalmente)
+        GameSession session = new GameSession(id);
+        session.loadFromTemplates(templateEnemies, templateFruits);
+
+        // 1) Notificar al cliente que se ha unido correctamente
+        c.sendLine("JOINED " + id + "\n");
+
+        // 2) Enviar la descripción del mapa lógico antes de que empiecen los STATE
+        sendMapTo(c);
+
+        // 3) Registrar al jugador en las estructuras globales
         players.put(id, p);
         byClient.put(c, id);
         playerClients.add(c);
-
-        // Crear sesión de juego
-        GameSession session = new GameSession(id);
-
-        // Cargar plantillas (enemigos y frutas) en esta sesión
-        session.loadFromTemplates(templateEnemies, templateFruits);
-
         sessions.put(id, session);
 
-        c.sendLine("JOINED " + id + "\n");
         System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
     }
+
+
 
     /**
      * Maneja una entrada de movimiento desde un cliente jugador.
@@ -336,13 +360,42 @@ public class Server {
     }
 
     /**
-     * Maneja la solicitud de un cliente para unirse como espectador.
+     * Maneja la solicitud de un cliente para unirse como espectador de un jugador.
      *
-     * <p>Si el jugador existe, lo añade a la lista de espectadores. Si no,
-     * lo añade a la lista de espera ({@link #waitingSpectatorsByPlayer}).</p>
+     * <p>Comportamiento según el estado del jugador objetivo:</p>
+     * <ul>
+     *     <li>Si el jugador con {@code playerId} existe:
+     *         <ul>
+     *             <li>Se añade el cliente a la lista de espectadores asociados
+     *                 a ese jugador.</li>
+     *             <li>Se envía la línea <code>SPECTATE_OK &lt;playerId&gt;</code>
+     *                 para confirmar que la suscripción fue exitosa.</li>
+     *             <li>A continuación, se envía la descripción completa del mapa
+     *                 lógico mediante {@link #sendMapTo(ClientHandler)}, de modo
+     *                 que el espectador pueda dibujar el mismo escenario que el
+     *                 jugador observado.</li>
+     *         </ul>
+     *     </li>
+     *     <li>Si el jugador con {@code playerId} aún no existe:
+     *         <ul>
+     *             <li>El cliente se añade a la lista de espera de espectadores
+     *                 en {@link #waitingSpectatorsByPlayer}.</li>
+     *             <li>Se envía la línea
+     *                 <code>SPECTATE_WAIT &lt;playerId&gt;</code> indicando que
+     *                 debe esperar a que el jugador inicie una sesión.</li>
+     *             <li>En este caso no se envía todavía el mapa; será responsabilidad
+     *                 de la lógica que promueva al espectador desde la lista de
+     *                 espera enviarle el mapa cuando corresponda.</li>
+     *         </ul>
+     *     </li>
+     * </ul>
      *
-     * @param c El manejador del cliente que solicita ser espectador.
-     * @param playerId El ID del jugador al que desea observar.
+     * @param c
+     *     Manejador del cliente que solicita unirse como espectador.
+     * @param playerId
+     *     Identificador del jugador cuya sesión se desea observar. Este ID debe
+     *     corresponder a un jugador actualmente registrado en {@link #players}
+     *     para que la suscripción se complete inmediatamente.
      */
     public void onSpectate(ClientHandler c, Integer playerId) {
         Player p = players.get(playerId);
@@ -351,6 +404,10 @@ public class Server {
                 .computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>())
                 .add(c);
             c.sendLine("SPECTATE_OK " + playerId + "\n");
+
+            // Enviar la descripción del mapa lógico al nuevo espectador
+            sendMapTo(c);
+
         } else {
             waitingSpectatorsByPlayer
                 .computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>())
@@ -358,6 +415,7 @@ public class Server {
             c.sendLine("SPECTATE_WAIT " + playerId + "\n");
         }
     }
+
 
     /**
      * Maneja la desconexión lógica de un cliente.
@@ -427,6 +485,74 @@ public class Server {
         CopyOnWriteArrayList<ClientHandler> ls = spectatorsByPlayer.get(playerId);
         if (ls != null) for (ClientHandler ch : ls) ch.sendLine(line);
     }
+
+    /**
+     * Envía al cliente indicado la representación completa del mapa lógico del juego.
+     *
+     * <p>El formato de los mensajes enviados es el siguiente:</p>
+     * <ul>
+     *     <li><code>MAP_SIZE &lt;ancho&gt; &lt;alto&gt;</code>:
+     *         indica el número de columnas (ancho) y filas (alto) del mapa.</li>
+     *     <li><code>MAP_ROW &lt;y&gt; &lt;cadena_tiles&gt;</code>:
+     *         una línea por cada fila del mapa, donde <code>y</code> es la
+     *         coordenada vertical y <code>cadena_tiles</code> es la fila tal como
+     *         está definida en {@link #MAP}.</li>
+     *     <li><code>MAP_END</code>: marca el final de la descripción del mapa.</li>
+     * </ul>
+     *
+     * <p>La intención es que el cliente (jugador o espectador) reciba toda la
+     * información necesaria para dibujar el escenario utilizando los mismos
+     * caracteres que el servidor usa internamente:</p>
+     * <ul>
+     *     <li><code>'W'</code> → agua</li>
+     *     <li><code>'T'</code> → tierra que sobresale del agua</li>
+     *     <li><code>'='</code> → plataforma</li>
+     *     <li><code>'|'</code> → liana</li>
+     *     <li><code>'S'</code> → casilla de aparición (spawn)</li>
+     *     <li><code>'G'</code> → meta o jaula de DK</li>
+     *     <li><code>'.'</code> → vacío</li>
+     * </ul>
+     *
+     * @param clientHandler
+     *     Manejador del cliente al que se le enviará el mapa. Si es {@code null},
+     *     este método no realiza ninguna acción.
+     */
+    private void sendMapTo(ClientHandler clientHandler) {
+        if (clientHandler == null) {
+            return;
+        }
+
+        // Dimensiones del mapa en coordenadas lógicas (tiles)
+        Integer width  = MAX_X - MIN_X + 1;
+        Integer height = MAX_Y - MIN_Y + 1;
+
+        // Línea inicial con el tamaño del mapa
+        clientHandler.sendLine(
+                String.format(
+                        java.util.Locale.ROOT,
+                        "MAP_SIZE %d %d%n",
+                        width,
+                        height
+                )
+        );
+
+        // Una línea por cada fila del mapa lógico
+        for (Integer y = MIN_Y; y <= MAX_Y; y++) {
+            String row = new String(MAP[y]);
+            clientHandler.sendLine(
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "MAP_ROW %d %s%n",
+                            y,
+                            row
+                    )
+            );
+        }
+
+        // Marcador de fin de mapa
+        clientHandler.sendLine("MAP_END\n");
+    }
+
 
     /**
      * Envía una línea de texto a todos los clientes conectados al servidor.

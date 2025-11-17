@@ -14,6 +14,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ---------------- Mapa lógico recibido del servidor ----------------
+
+/**
+ * Representa el mapa lógico enviado por el servidor.
+ *
+ * - width  : número de columnas válidas.
+ * - height : número de filas válidas.
+ * - tiles  : matriz de caracteres con el contenido por celda.
+ *            Cada carácter coincide con los usados por el servidor:
+ *            'W', 'T', '=', '|', 'S', 'G' o '.'.
+ */
+#define MAX_MAP_WIDTH   32
+#define MAX_MAP_HEIGHT  32
+
+typedef struct {
+    int width;
+    int height;
+    char tiles[MAX_MAP_HEIGHT][MAX_MAP_WIDTH + 1]; /* +1 por seguridad con '\0' */
+} GameMap;
+
 // ---------------- Constantes generales de ventana ----------------
 
 /**
@@ -55,21 +75,37 @@
  */
 #define ROLE_SPECTATOR  2
 
+
 // ---------------- Estado del cliente ----------------
 
 /**
  * Estructura que representa el estado lógico del cliente.
  * 
  * Campos:
- *  - socket_fd: descriptor de socket WinSock asociado al servidor.
- *  - role: rol actual del cliente (ROLE_PLAYER o ROLE_SPECTATOR).
- *  - connected: indica si el socket está conectado (1) o no (0).
+ *  - socket_fd : descriptor de socket WinSock asociado al servidor.
+ *  - role      : rol actual del cliente (ROLE_PLAYER o ROLE_SPECTATOR).
+ *  - connected : indica si el socket está conectado (1) o no (0).
+ *  - map       : copia local del mapa lógico enviado por el servidor.
+ *  - playerId  : identificador asignado por el servidor (JOINED <id>).
+ *  - playerX   : coordenada X lógica del jugador (en tiles).
+ *  - playerY   : coordenada Y lógica del jugador (en tiles).
+ *  - score     : puntuación actual del jugador.
+ *  - gameOver  : indica si el servidor marca la partida como terminada.
  */
 typedef struct {
     SOCKET socket_fd;
-    int role;
-    int connected;
+    int    role;
+    int    connected;
+
+    GameMap map;
+
+    int playerId;
+    int playerX;
+    int playerY;
+    int score;
+    int gameOver;
 } ClientState;
+
 
 // ---------------- Prototipos: funciones de sockets ----------------
 
@@ -100,6 +136,21 @@ void send_line(SOCKET socket_fd, const char *line);
  */
 void close_socket(SOCKET socket_fd);
 
+/**
+ * Recibe una línea de texto desde el servidor (terminada en '\n').
+ *
+ * La función lee del socket carácter por carácter hasta encontrar
+ * un '\n' o hasta llenar el búfer (dejando siempre espacio para '\0').
+ *
+ * @param socket_fd  Descriptor de socket WinSock desde el que se lee.
+ * @param buffer     Búfer de destino donde se almacenará la línea.
+ * @param bufferSize Tamaño total del búfer en bytes.
+ * @return Número de caracteres leídos (sin contar el '\0') en caso de éxito,
+ *         o -1 si la conexión se cerró o hubo un error.
+ */
+int recv_line(SOCKET socket_fd, char *buffer, int bufferSize);
+
+
 // ---------------- Prototipos: funciones de interfaz ----------------
 
 /**
@@ -129,4 +180,4 @@ void run_player_mode(ClientState *state);
  */
 void run_spectator_mode(ClientState *state);
 
-#endif // CLIENT_CONSTANTS_H
+#endif //CLIENT_CONSTANTS_H

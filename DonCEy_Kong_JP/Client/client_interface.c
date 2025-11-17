@@ -22,6 +22,166 @@ static void draw_button(Rectangle rect, const char *text, bool hovered)
 }
 
 /* ============================
+ *  H E L P E R S   D E   M A P A
+ * ============================ */
+
+/**
+ * Recibe el mapa lógico inicial desde el servidor y lo almacena en state->map.
+ *
+ * Protocolo esperado (en cualquier orden mezclado con otras líneas):
+ *  - "MAP_SIZE <ancho> <alto>"  (obligatorio una vez)
+ *  - "MAP_ROW <y> <fila_completa>" para cada fila
+ *  - "MAP_END"                  (marca el final de la descripción del mapa)
+ *
+ * Esta función es robusta ante líneas adicionales (por ejemplo "STATE ..."):
+ * las ignora hasta haber recibido "MAP_SIZE" y "MAP_END".
+ *
+ * @param state Puntero al estado del cliente ya conectado.
+ * @return 0 si el mapa se recibió correctamente, -1 en caso de error.
+ */
+static int receive_initial_map(ClientState *state)
+{
+    char line[256];
+
+    int width  = 0;
+    int height = 0;
+    int gotSize = 0;
+
+    /* --- 1) Esperar MAP_SIZE --- */
+    for (;;) {
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            return -1;
+        }
+
+        if (sscanf(line, "MAP_SIZE %d %d", &width, &height) == 2) {
+            gotSize = 1;
+            break;
+        }
+
+        /* Cualquier otra cosa (por ej. STATE) se ignora aquí */
+    }
+
+    if (!gotSize ||
+        width <= 0 || height <= 0 ||
+        width > MAX_MAP_WIDTH || height > MAX_MAP_HEIGHT) {
+        return -1;
+    }
+
+    state->map.width  = width;
+    state->map.height = height;
+
+    /* Inicializamos la matriz a vacío por si faltan filas */
+    for (int y = 0; y < height; y++) {
+        memset(state->map.tiles[y], '.', width);
+        state->map.tiles[y][width] = '\0';
+    }
+
+    /* --- 2) Leer hasta MAP_END, recogiendo MAP_ROW --- */
+    for (;;) {
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            return -1;
+        }
+
+        if (strncmp(line, "MAP_END", 7) == 0) {
+            break; /* ya terminamos */
+        }
+
+        int y = -1;
+        char row[MAX_MAP_WIDTH + 1];
+
+        if (sscanf(line, "MAP_ROW %d %s", &y, row) == 2) {
+            if (y >= 0 && y < state->map.height) {
+                strncpy(state->map.tiles[y], row, state->map.width);
+                state->map.tiles[y][state->map.width] = '\0';
+            }
+        }
+        /* Si no era MAP_ROW, se ignora (por ej. STATE) */
+    }
+
+    return 0;
+}
+
+
+/* ============================
+ *  D I B U J A R   E S C E N A
+ * ============================ */
+
+/**
+ * Dibuja el mapa y la posición del jugador utilizando raylib.
+ *
+ * - Cada celda del mapa se representa como un rectángulo de color distinto
+ *   según el carácter recibido del servidor.
+ * - El jugador se dibuja como un rectángulo de color destacado encima.
+ *
+ * @param state Puntero al estado actual del cliente (mapa + posición jugador).
+ */
+static void draw_game_scene(const ClientState *state)
+{
+    const int tileSize = 40;  /* tamaño en píxeles de cada tile */
+
+    /* Calcular offset para centrar el mapa en la ventana */
+    int mapPixelWidth  = state->map.width  * tileSize;
+    int mapPixelHeight = state->map.height * tileSize;
+
+    int offsetX = (WINDOW_WIDTH  - mapPixelWidth)  / 2;
+    int offsetY = (WINDOW_HEIGHT - mapPixelHeight) / 2;
+
+    /* Dibujar fondo */
+    ClearBackground((Color){ 10, 10, 30, 255 });
+
+    /* Dibujar tiles */
+    for (int y = 0; y < state->map.height; y++) {
+        for (int x = 0; x < state->map.width; x++) {
+            char t = state->map.tiles[y][x];
+            Color c;
+
+            switch (t) {
+                case 'W': c = (Color){ 30, 60, 200, 255 }; break;  /* Agua */
+                case 'T': c = (Color){ 120, 80, 40, 255 }; break;  /* Tierra */
+                case '=': c = (Color){ 100, 100, 100, 255 }; break;/* Plataforma */
+                case '|': c = (Color){ 50, 150, 60, 255 }; break;  /* Liana */
+                case 'S': c = (Color){ 200, 200, 50, 255 }; break; /* Spawn */
+                case 'G': c = (Color){ 200, 120, 50, 255 }; break; /* Meta */
+                default:  c = (Color){ 20, 20, 30, 255 }; break;   /* Vacío */
+            }
+
+            /* OJO: en el servidor y=0 es la fila inferior, aquí invertimos Y */
+            int drawX = offsetX + x * tileSize;
+            int drawY = offsetY + (state->map.height - 1 - y) * tileSize;
+
+            DrawRectangle(drawX, drawY, tileSize, tileSize, c);
+            DrawRectangleLines(drawX, drawY, tileSize, tileSize, (Color){ 10, 10, 10, 255 });
+        }
+    }
+
+    /* Dibujar jugador (si tenemos posición válida) */
+    if (state->playerId != 0) {
+        int px = state->playerX;
+        int py = state->playerY;
+
+        int drawX = offsetX + px * tileSize;
+        int drawY = offsetY + (state->map.height - 1 - py) * tileSize;
+
+        DrawRectangle(drawX + 5, drawY + 5,
+                      tileSize - 10, tileSize - 10,
+                      (Color){ 230, 30, 60, 255 });
+    }
+
+    /* HUD sencillo */
+    DrawText("DonCEy Kong Jr - Cliente", 10, 10, 20, RAYWHITE);
+
+    char hud[128];
+    snprintf(hud, sizeof(hud), "Jugador ID: %d  Score: %d  GameOver: %s",
+             state->playerId,
+             state->score,
+             state->gameOver ? "SI" : "NO");
+    DrawText(hud, 10, WINDOW_HEIGHT - 30, 16, LIGHTGRAY);
+}
+
+
+/* ============================
  *  P A N T A L L A  I N I C I A L
  * ============================ */
 
@@ -77,30 +237,110 @@ int run_role_selection_screen(void)
 /**
  * Bucle principal del cliente en modo jugador.
  *
- * - Envía un comando JOIN al servidor con un nombre fijo ("Jugador1").
- * - Dibuja una pantalla básica mientras la ventana esté abierta.
+ * Flujo:
+ *  1) Envía un comando JOIN con un nombre fijo.
+ *  2) Busca en las líneas del servidor una respuesta "JOINED <id>" y
+ *     guarda el playerId asociado.
+ *  3) Recibe el mapa inicial mediante receive_initial_map(), que también
+ *     es robusta ante líneas extra.
+ *  4) Entra en un bucle donde:
+ *      - Lee líneas del tipo "STATE seq id x y score gameOver".
+ *      - Actualiza la posición y puntuación del jugador.
+ *      - Envía inputs al servidor según las teclas pulsadas.
+ *      - Dibuja el mapa y la posición del jugador con raylib.
  *
- * @param state Puntero al estado del cliente con socket ya conectado.
+ * @param state Puntero al estado del cliente ya inicializado y con el socket
+ *              conectado al servidor.
  */
 void run_player_mode(ClientState *state)
 {
-    const char *playerName = "Jugador1";  // Más adelante se puede leer de la UI.
+    char line[256];
     char cmd[128];
 
-    // Enviar JOIN al servidor
-    snprintf(cmd, sizeof(cmd), "JOIN %s\n", playerName);
+    /* 1) Enviar JOIN con un nombre de jugador fijo por ahora */
+    snprintf(cmd, sizeof(cmd), "JOIN Jugador1\n");
     send_line(state->socket_fd, cmd);
 
+    /* 2) Buscar "JOINED <id>" en lo que vaya mandando el servidor */
+    state->playerId = 0;
+    for (;;) {
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            return;
+        }
+
+        int id = 0;
+        if (sscanf(line, "JOINED %d", &id) == 1) {
+            state->playerId = id;
+            break;
+        }
+
+        /* Cualquier otra línea antes de JOINED se ignora */
+    }
+
+    /* 3) Recibir mapa inicial */
+    if (receive_initial_map(state) != 0) {
+        return;
+    }
+
+    /* Inicializar HUD / estado básico */
+    state->playerX  = 0;
+    state->playerY  = 0;
+    state->score    = 0;
+    state->gameOver = 0;
+
+    int seq = 0;  /* número de secuencia para INPUT */
+
+    /* 4) Bucle de juego */
     while (!WindowShouldClose()) {
+
+        /* --- Leer estado del servidor --- */
+        int len = recv_line(state->socket_fd, line, sizeof(line));
+        if (len <= 0) {
+            break; /* desconexión o error */
+        }
+
+        /* Esperamos líneas del tipo:
+         * STATE <seq> <id> <x> <y> <score> <true/false>
+         */
+        char tag[16];
+        char gameOverStr[8];
+        int  s, pid, x, y, score;
+        if (sscanf(line, "%15s %d %d %d %d %d %7s",
+                   tag, &s, &pid, &x, &y, &score, gameOverStr) == 7 &&
+            strcmp(tag, "STATE") == 0) {
+
+            if (pid == state->playerId) {
+                state->playerX  = x;
+                state->playerY  = y;
+                state->score    = score;
+                state->gameOver = (strcmp(gameOverStr, "true") == 0);
+            }
+        }
+
+        /* --- Procesar input local y enviarlo al servidor --- */
+        int dx = 0, dy = 0;
+
+        if (IsKeyDown(KEY_LEFT))  dx = -1;
+        if (IsKeyDown(KEY_RIGHT)) dx = +1;
+        /* Servidor usa Y hacia arriba (p.y++ sube), por eso invertimos aquí */
+        if (IsKeyDown(KEY_DOWN))  dy = -1;
+        if (IsKeyDown(KEY_UP))    dy = +1;
+
+        if (dx != 0 || dy != 0) {
+            seq++;
+            snprintf(cmd, sizeof(cmd), "INPUT %d %d %d\n", seq, dx, dy);
+            send_line(state->socket_fd, cmd);
+        }
+
+        /* --- Dibujar escena --- */
         BeginDrawing();
-            ClearBackground((Color){ 10, 10, 30, 255 });
-            DrawText("Modo JUGADOR", 280, 80, 32, RAYWHITE);
-            DrawText("Conectado al servidor.", 260, 140, 20, LIGHTGRAY);
-            DrawText("TODO: implementar juego (movimiento, render, etc.)", 80, 200, 20, GOLD);
-            DrawText("Presione ESC o cierre la ventana para salir.", 180, 260, 18, GRAY);
+            draw_game_scene(state);
         EndDrawing();
     }
 }
+
+
 
 /* ============================
  *  M O D O   E S P E C T A D O R
@@ -109,27 +349,71 @@ void run_player_mode(ClientState *state)
 /**
  * Bucle principal del cliente en modo espectador.
  *
- * - Envía un comando SPECTATE para observar al jugador con ID fijo (1).
- * - Muestra una pantalla de estado mientras la ventana esté abierta.
+ * Flujo:
+ *  1) Envía "SPECTATE <playerId>" (de momento ID fijo 1).
+ *  2) Espera una respuesta "SPECTATE_OK <playerId>".
+ *  3) Recibe el mapa inicial mediante receive_initial_map().
+ *  4) Entra en un bucle donde:
+ *      - Lee líneas "STATE ..." del servidor.
+ *      - Actualiza la posición/score del jugador observado.
+ *      - Dibuja la escena con raylib.
  *
- * @param state Puntero al estado del cliente con socket ya conectado.
+ * @param state Puntero al estado del cliente ya inicializado y con el socket
+ *              conectado al servidor.
  */
 void run_spectator_mode(ClientState *state)
 {
-    int playerId = 1;   // ID fijo por ahora
+    char line[256];
     char cmd[128];
+
+    int playerId = 1;   /* Por ahora observamos siempre al jugador 1 */
 
     snprintf(cmd, sizeof(cmd), "SPECTATE %d\n", playerId);
     send_line(state->socket_fd, cmd);
 
+    /* Esperar "SPECTATE_OK <id>" (ignoramos SPECTATE_WAIT por simplicidad) */
+    if (recv_line(state->socket_fd, line, sizeof(line)) <= 0) {
+        return;
+    }
+
+    if (sscanf(line, "SPECTATE_OK %d", &state->playerId) != 1) {
+        /* Si no es OK, terminamos */
+        return;
+    }
+
+    /* Recibir mapa inicial */
+    if (receive_initial_map(state) != 0) {
+        return;
+    }
+
+    state->playerX  = 0;
+    state->playerY  = 0;
+    state->score    = 0;
+    state->gameOver = 0;
+
     while (!WindowShouldClose()) {
+
+        if (recv_line(state->socket_fd, line, sizeof(line)) <= 0) {
+            break;
+        }
+
+        char tag[16];
+        char gameOverStr[8];
+        int  s, pid, x, y, score;
+        if (sscanf(line, "%15s %d %d %d %d %d %7s",
+                   tag, &s, &pid, &x, &y, &score, gameOverStr) == 7 &&
+            strcmp(tag, "STATE") == 0) {
+
+            if (pid == state->playerId) {
+                state->playerX  = x;
+                state->playerY  = y;
+                state->score    = score;
+                state->gameOver = (strcmp(gameOverStr, "true") == 0);
+            }
+        }
+
         BeginDrawing();
-            ClearBackground((Color){ 10, 10, 30, 255 });
-            DrawText("Modo ESPECTADOR", 260, 80, 32, RAYWHITE);
-            DrawText("Conectado al servidor.", 260, 140, 20, LIGHTGRAY);
-            DrawText("Observando jugador con ID = 1", 230, 180, 20, LIGHTGRAY);
-            DrawText("TODO: recibir estado y dibujar el juego.", 160, 220, 20, GOLD);
-            DrawText("Presione ESC o cierre la ventana para salir.", 180, 260, 18, GRAY);
+            draw_game_scene(state);
         EndDrawing();
     }
 }

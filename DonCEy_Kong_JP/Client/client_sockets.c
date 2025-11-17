@@ -60,6 +60,65 @@ void send_line(SOCKET socket_fd, const char *line)
 }
 
 /**
+ * Recibe una línea de texto desde el servidor (terminada en '\n').
+ *
+ * La función lee del socket carácter por carácter usando recv(), hasta
+ * encontrar un salto de línea '\n' o hasta llenar el búfer menos uno
+ * (para el terminador '\0').
+ *
+ * También elimina un posible '\r' final típico de líneas con "\r\n".
+ *
+ * @param socket_fd  Descriptor de socket WinSock desde el que se lee.
+ * @param buffer     Búfer de destino donde se almacenará la línea.
+ * @param bufferSize Tamaño total del búfer en bytes. Debe ser > 1.
+ * @return Número de caracteres leídos (sin contar el '\0') en caso de éxito,
+ *         o -1 si la conexión se cerró o se produjo un error.
+ */
+int recv_line(SOCKET socket_fd, char *buffer, int bufferSize)
+{
+    if (bufferSize <= 1) {
+        return -1;
+    }
+
+    int total = 0;
+    char c;
+
+    while (total < bufferSize - 1) {
+        int ret = recv(socket_fd, &c, 1, 0);
+        if (ret == 0) {
+            /* Conexión cerrada por el servidor */
+            return -1;
+        }
+        if (ret < 0) {
+            /* Error en recv() */
+            int err = WSAGetLastError();
+            if (err == WSAEINTR) {
+                continue; /* reintentar si fue interrumpido */
+            }
+            return -1;
+        }
+
+        if (c == '\n') {
+            break; /* fin de línea */
+        }
+
+        buffer[total++] = c;
+    }
+
+    buffer[total] = '\0';
+
+    /* Eliminar '\r' final si viene de "\r\n" */
+    if (total > 0 && buffer[total - 1] == '\r') {
+        buffer[total - 1] = '\0';
+        total--;
+    }
+
+    return total;
+}
+
+
+
+/**
  * Cierra un socket WinSock.
  *
  * @param socket_fd Descriptor de socket que se desea cerrar.
