@@ -25,7 +25,7 @@ public class Server {
      * del cliente y su número de secuencia para reconciliación.</p>
      */
     static final class InputEvent {
-        final int playerId, seq, dx, dy;
+        final Integer playerId, seq, dx, dy;
 
         /**
          * Crea un nuevo evento de entrada para un jugador.
@@ -35,7 +35,7 @@ public class Server {
          * @param dx       desplazamiento horizontal solicitado por el cliente
          * @param dy       desplazamiento vertical solicitado por el cliente
          */
-        InputEvent(int playerId, int seq, int dx, int dy) {
+        InputEvent(Integer playerId, Integer seq, Integer dx, Integer dy) {
             this.playerId = playerId; this.seq = seq; this.dx = dx; this.dy = dy;
         }
     }
@@ -70,7 +70,7 @@ public class Server {
     /** El socket principal del servidor, usado para aceptar nuevas conexiones. */
     private ServerSocket serverSocket;
     /** El puerto TCP donde el servidor está escuchando conexiones. */
-    private final int port = 5000;
+    private final Integer port = 5000;
     /** Pool de hilos para manejar la comunicación I/O con los {@link ClientHandler}. */
     private final ExecutorService pool = Executors.newCachedThreadPool();
     /** Lista de todos los manejadores de clientes conectados (jugadores y espectadores). */
@@ -94,10 +94,10 @@ public class Server {
             new ConcurrentHashMap<>();
 
     /* ========= Mapa / constantes ========= */
-    public static final int MIN_X = 0;
-    public static final int MAX_X = 10;
-    public static final int MIN_Y = 0;
-    public static final int MAX_Y = 10;
+    public static final Integer MIN_X = 0;
+    public static final Integer MAX_X = 10;
+    public static final Integer MIN_Y = 0;
+    public static final Integer MAX_Y = 10;
 
     /**
      * Representación del mapa del juego como una matriz de caracteres.
@@ -127,7 +127,7 @@ public class Server {
      * @param y coordenada vertical en el mapa
      * @return carácter que representa el contenido de la celda del mapa
      */
-    private static char tileAt(int x, int y) {
+    private static Character tileAt(Integer x, Integer y) {
         if (x < MIN_X || x > MAX_X || y < MIN_Y || y > MAX_Y) return '.';
         return MAP[y][x];
     }
@@ -139,7 +139,7 @@ public class Server {
      * @param y coordenada vertical en el mapa
      * @return {@code true} si la celda contiene agua, {@code false} en caso contrario
      */
-    private static boolean isWater(int x, int y) {
+    private static Boolean isWater(Integer x, Integer y) {
         return tileAt(x, y) == 'W';
     }
 
@@ -152,7 +152,7 @@ public class Server {
      * @return {@code true} si el carácter representa una superficie sólida,
      *         {@code false} en caso contrario
      */
-    private static boolean isSolidTile(char t) {
+    private static Boolean isSolidTile(Character t) {
         return t == 'T'   // tierra que sale del agua
             || t == '='   // plataforma
             || t == '|'   // liana (colgado)
@@ -223,7 +223,7 @@ public class Server {
         while ((ev = inputQueue.poll()) != null) {
             Player p = players.get(ev.playerId);
             if (p == null) continue;
-            int nx = p.x + ev.dx, ny = p.y + ev.dy;
+            Integer nx = p.x + ev.dx, ny = p.y + ev.dy;
             if (nx < MIN_X) nx = MIN_X; if (nx > MAX_X) nx = MAX_X;
             if (ny < MIN_Y) ny = MIN_Y; if (ny > MAX_Y) ny = MAX_Y;
             p.x = nx; p.y = ny; p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
@@ -236,7 +236,7 @@ public class Server {
 
             // Gravedad: si no hay soporte debajo, cae una casilla
             if (p.y > MIN_Y) {
-                char below = tileAt(p.x, p.y - 1);
+                Character below = tileAt(p.x, p.y - 1);
                 if (!isSolidTile(below)) {
                     p.y -= 1;
                 }
@@ -280,7 +280,7 @@ public class Server {
         });
 
         // 3) Notificar estado a los clientes
-        int seq = tickSeq.incrementAndGet();
+        Integer seq = tickSeq.incrementAndGet();
         players.forEach((id, p) -> {
             String state = String.format(
                     Locale.ROOT,
@@ -300,7 +300,7 @@ public class Server {
      * @param name    nombre de jugador solicitado
      */
     public void onJoin(ClientHandler c, String name) {
-        int id = nextId.getAndIncrement();
+        Integer id = nextId.getAndIncrement();
         Player p = new Player(id, name);
         players.put(id, p);
         byClient.put(c, id);
@@ -326,7 +326,7 @@ public class Server {
      * @param dx  desplazamiento horizontal (-1, 0 o +1)
      * @param dy  desplazamiento vertical (-1, 0 o +1)
      */
-    public void onInput(ClientHandler c, int seq, int dx, int dy) {
+    public void onInput(ClientHandler c, Integer seq, Integer dx, Integer dy) {
         Integer id = byClient.get(c);
         if (id == null) { c.sendLine("ERR NOT_PLAYER\n"); return; }
 
@@ -344,7 +344,7 @@ public class Server {
      * @param c El manejador del cliente que solicita ser espectador.
      * @param playerId El ID del jugador al que desea observar.
      */
-    public void onSpectate(ClientHandler c, int playerId) {
+    public void onSpectate(ClientHandler c, Integer playerId) {
         Player p = players.get(playerId);
         if (p != null) {
             spectatorsByPlayer
@@ -384,7 +384,7 @@ public class Server {
      *
      * @param playerId El ID del jugador cuya sesión debe terminar.
      */
-    private void endPlayerSession(int playerId) {
+    private void endPlayerSession(Integer playerId) {
         GameSession s = sessions.get(playerId);
         if (s != null) {
             CopyOnWriteArrayList<ClientHandler> specs = spectatorsByPlayer.remove(playerId);
@@ -418,7 +418,7 @@ public class Server {
      * @param playerId identificador del jugador dueño de la sesión
      * @param line     línea de texto a enviar (debe incluir el salto de línea si se requiere)
      */
-    private void sendToPlayerAndSpectators(int playerId, String line) {
+    private void sendToPlayerAndSpectators(Integer playerId, String line) {
         // a jugador:
         for (Map.Entry<ClientHandler,Integer> e : byClient.entrySet()) {
             if (e.getValue() == playerId) e.getKey().sendLine(line);
@@ -527,8 +527,8 @@ public class Server {
                 }
 
                 String type  = t[2];
-                int liana    = Integer.parseInt(t[3]);
-                int y;
+                Integer liana    = Integer.parseInt(t[3]);
+                Integer y;
                 Integer playerId = null;
 
                 if (t.length == 4) {
@@ -564,9 +564,9 @@ public class Server {
                         System.out.println("[ADMIN] Uso: ADMIN FRUIT CREATE <liana> <y> <pts> [playerId]");
                         return;
                     }
-                    int l   = Integer.parseInt(t[3]);
-                    int y   = Integer.parseInt(t[4]);
-                    int pts = Integer.parseInt(t[5]);
+                    Integer l   = Integer.parseInt(t[3]);
+                    Integer y   = Integer.parseInt(t[4]);
+                    Integer pts = Integer.parseInt(t[5]);
                     Integer playerId = (t.length >= 7) ? Integer.parseInt(t[6]) : null;
 
                     if (playerId == null) {
@@ -584,8 +584,8 @@ public class Server {
                         System.out.println("[ADMIN] Uso: ADMIN FRUIT DELETE <liana> <y> [playerId]");
                         return;
                     }
-                    int l = Integer.parseInt(t[3]);
-                    int y = Integer.parseInt(t[4]);
+                    Integer l = Integer.parseInt(t[3]);
+                    Integer y = Integer.parseInt(t[4]);
                     Integer playerId = (t.length >= 6) ? Integer.parseInt(t[5]) : null;
 
                     if (playerId == null) {
@@ -618,7 +618,7 @@ public class Server {
      * @param liana    Coordenada X o liana donde se ubica el enemigo.
      * @param y        Coordenada Y inicial del enemigo.
      */
-    private void addEnemyToPlayerSession(int playerId, String type, int liana, int y) {
+    private void addEnemyToPlayerSession(Integer playerId, String type, Integer liana, Integer y) {
         GameSession session = sessions.get(playerId);
         if (session == null) {
             System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
@@ -639,7 +639,7 @@ public class Server {
      * @param y        Coordenada Y de la fruta.
      * @param pts      Puntos que otorga la fruta.
      */
-    private void addFruitToPlayerSession(int playerId, int l, int y, int pts) {
+    private void addFruitToPlayerSession(Integer playerId, Integer l, Integer y, Integer pts) {
         GameSession session = sessions.get(playerId);
         if (session == null) {
             System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
@@ -659,7 +659,7 @@ public class Server {
      * @param l        Coordenada X (liana) de la fruta.
      * @param y        Coordenada Y de la fruta.
      */
-    private void removeFruitFromPlayerSession(int playerId, int l, int y) {
+    private void removeFruitFromPlayerSession(Integer playerId, Integer l, Integer y) {
         GameSession session = sessions.get(playerId);
         if (session == null) {
             System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
