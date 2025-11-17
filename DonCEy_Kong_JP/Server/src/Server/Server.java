@@ -12,12 +12,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Clase principal del servidor
  * <p>Esta clase implementa el patrón de diseño Singleton para asegurar
  * que solo exista una instancia del servidor en toda la aplicación.</p>
- * <p>Se encarga de manejar la lógica central del juego, la gestión de eventos
- * de entrada y la coordinación de todos los componentes del sistema.</p>
- * @author [Jose]
+ *
+ * <p>Se encarga de manejar la lógica central del juego, las conexiones con los
+ * clientes, la administración de sesiones de juego y la comunicación con
+ * espectadores.</p>
  */
-public final class Server {
-    /* ========= Eventos de input ========= */
+public class Server {
+
     /**
      * Representa un evento de entrada (input) del jugador.
      * <p>Contiene la información necesaria para procesar una acción de movimiento
@@ -25,6 +26,15 @@ public final class Server {
      */
     static final class InputEvent {
         final int playerId, seq, dx, dy;
+
+        /**
+         * Crea un nuevo evento de entrada para un jugador.
+         *
+         * @param playerId identificador del jugador que generó el input
+         * @param seq      número de secuencia del input para reconciliación
+         * @param dx       desplazamiento horizontal solicitado por el cliente
+         * @param dy       desplazamiento vertical solicitado por el cliente
+         */
         InputEvent(int playerId, int seq, int dx, int dy) {
             this.playerId = playerId; this.seq = seq; this.dx = dx; this.dy = dy;
         }
@@ -35,10 +45,12 @@ public final class Server {
      * La única instancia de la clase {@code Server} (patrón Singleton).
      */
     private static volatile Server instance;
+
     /**
      * Constructor privado para prevenir la instanciación externa.
      */
     private Server() {}
+
     /**
      * Obtiene la única instancia de la clase {@code Server}.
      *
@@ -81,22 +93,16 @@ public final class Server {
     private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<ClientHandler>> waitingSpectatorsByPlayer =
             new ConcurrentHashMap<>();
 
-    /* ========= Plantillas del Admin (Abstract Factory) ========= */
-    /** Factoría utilizada para crear elementos del juego, siguiendo el patrón **Abstract Factory**. */
-    private final GameElementFactory factory = new DefaultFactory();
-    private final CopyOnWriteArrayList<Enemy> templateEnemies = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<Fruit> templateFruits  = new CopyOnWriteArrayList<>();
+    /* ========= Mapa / constantes ========= */
+    public static final int MIN_X = 0;
+    public static final int MAX_X = 10;
+    public static final int MIN_Y = 0;
+    public static final int MAX_Y = 10;
 
-    /* ========= Sesiones por jugador ========= */
-    /** Almacena la sesión de juego activa por cada ID de jugador. */
-    private final ConcurrentHashMap<Integer, GameSession> sessions = new ConcurrentHashMap<>();
-
-    /* ========= Mapa (ajústalo a tu tablero) ========= */
-    /** Límite inferior de la coordenada Y para el tablero de juego. */
-    private static final int MIN_Y = 0, MAX_Y = 10;
-    private static final int MIN_X = 0, MAX_X = 10;
-
-    // Mapa lógico (igual que en map.h). y=0 es la fila de abajo.
+    /**
+     * Representación del mapa del juego como una matriz de caracteres.
+     * Cada fila representa una coordenada Y y cada columna una coordenada X.
+     */
     private static final char[][] MAP = {
         "WWTWWTWTWWW".toCharArray(), // y=0
         "S==..=T..==".toCharArray(), // y=1
@@ -109,19 +115,43 @@ public final class Server {
         ".....|..===".toCharArray(), // y=8
         ".....|.....".toCharArray(), // y=9
         "..GGG===...".toCharArray()  // y=10
-};
+    };
 
 
+    /**
+     * Obtiene el carácter de la celda del mapa en las coordenadas dadas.
+     * <p>Si las coordenadas están fuera de los límites del mapa, se devuelve
+     * el carácter {@code '.'} para indicar vacío.</p>
+     *
+     * @param x coordenada horizontal en el mapa
+     * @param y coordenada vertical en el mapa
+     * @return carácter que representa el contenido de la celda del mapa
+     */
     private static char tileAt(int x, int y) {
         if (x < MIN_X || x > MAX_X || y < MIN_Y || y > MAX_Y) return '.';
         return MAP[y][x];
     }
 
+    /**
+     * Indica si la celda en las coordenadas especificadas corresponde a agua.
+     *
+     * @param x coordenada horizontal en el mapa
+     * @param y coordenada vertical en el mapa
+     * @return {@code true} si la celda contiene agua, {@code false} en caso contrario
+     */
     private static boolean isWater(int x, int y) {
-    return tileAt(x, y) == 'W';
+        return tileAt(x, y) == 'W';
     }
 
     // Donde el jugador PUEDE estar de pie / colgado
+    /**
+     * Determina si un carácter de mapa se considera una superficie sólida
+     * sobre la cual el jugador puede estar de pie o colgado.
+     *
+     * @param t carácter del mapa a evaluar
+     * @return {@code true} si el carácter representa una superficie sólida,
+     *         {@code false} en caso contrario
+     */
     private static boolean isSolidTile(char t) {
         return t == 'T'   // tierra que sale del agua
             || t == '='   // plataforma
@@ -130,11 +160,17 @@ public final class Server {
             || t == 'G';  // meta (jaula DK)
     }
 
+    /* ========= Abstract Factory / plantillas ========= */
+    /** Fábrica abstracta de elementos del juego (enemigos y frutas). */
+    private final GameElementFactory factory = new DefaultFactory();
+    /** Lista de enemigos “plantilla” compartidos entre sesiones. */
+    private final CopyOnWriteArrayList<Enemy> templateEnemies = new CopyOnWriteArrayList<>();
+    /** Lista de frutas “plantilla” compartidas entre sesiones. */
+    private final CopyOnWriteArrayList<Fruit> templateFruits  = new CopyOnWriteArrayList<>();
+    /** Sesiones de juego por jugador. */
+    private final ConcurrentHashMap<Integer, GameSession> sessions = new ConcurrentHashMap<>();
 
-
-
-    /* ========= Loop ========= */
-    /** Planificador de un solo hilo para ejecutar el {@link #tick()} a una velocidad constante. */
+    /* ========= Game Loop / Scheduler ========= */
     private final ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor();
 
     /**
@@ -210,142 +246,95 @@ public final class Server {
             if (isWater(p.x, p.y)) {
                 p.x = session.spawnX;
                 p.y = session.spawnY;
-                System.out.println("[JAVA] Jugador " + pid + " cayo al agua -> respawn");
+                p.gameOver = false;
             }
         });
 
-
-
-        // 2) simular enemigos por sesión y chequear eventos de juego
-        for (Map.Entry<Integer, GameSession> e : sessions.entrySet()) {
-            int pid = e.getKey();
-            GameSession s = e.getValue();
+        // 2) Simulación de enemigos + colisiones
+        sessions.forEach((pid, session) -> {
             Player p = players.get(pid);
-            if (p == null) continue;
+            if (p == null) return;
 
-            // avanzar enemigos con “velocidad” de la ronda de ese jugador
-            for (int step = 0; step < Math.max(1, s.enemySpeedSteps); step++) {
-                for (Enemy enemy : s.enemies) enemy.tick(MIN_Y, MAX_Y);
+            // Enemigos (ejemplo simplificado, se puede usar enemySpeedSteps)
+            for (Enemy e : session.enemies) {
+                e.tick(MIN_Y, MAX_Y);
+                if (e.getX() == p.x && e.getY() == p.y) {
+                    p.gameOver = true;
+                }
             }
 
-            // colisiones con enemigos → LOSE (juego termina para ese jugador)
-            boolean hit = s.enemies.stream().anyMatch(en -> en.getX() == p.x && en.getY() == p.y);
-            if (hit && !p.gameOver) {
-                // marcar fin de juego, pero NO cerrar la sesión aún
-                p.gameOver = true;
-                sendToPlayerAndSpectators(pid, "LOSE " + pid + " " + p.score + "\n");
-                // seguimos enviando STATE/OBS para que vean la pantalla final
-                continue;
-            }
-
-            // recoger frutas → +pts y borrar fruta
-            Iterator<Fruit> it = s.fruits.iterator();
+            // Frutas (ejemplo simple: si colisiona, suma puntos y se quita la fruta)
+            Iterator<Fruit> it = session.fruits.iterator();
             while (it.hasNext()) {
                 Fruit f = it.next();
                 if (f.getX() == p.x && f.getY() == p.y) {
                     p.score += f.getPoints();
                     it.remove();
-                    sendToPlayerAndSpectators(pid, "SCORE " + pid + " " + p.score + "\n");
                 }
             }
 
-            // llegar a la meta → subir ronda, subir velocidad, sumar bonus y respawn
-            if (p.x == s.goalX && p.y == s.goalY) {
-                p.score += 100; // bonus de ronda
-                p.round += 1;
-                s.enemySpeedSteps += 1; // más rápido cada ronda
-                p.x = s.spawnX; p.y = s.spawnY;
-                sendToPlayerAndSpectators(pid, "SCORE " + pid + " " + p.score + "\n");
-                sendToPlayerAndSpectators(pid, "ROUND " + pid + " " + p.round + " " + s.enemySpeedSteps + "\n");
+            // Meta (si llega a la meta, se puede marcar como ronda superada)
+            if (p.x == session.goalX && p.y == session.goalY) {
+                p.round++;
             }
-        }
+        });
 
-        // 3) STATE (pos, ack, score, round) a jugadores; OBS a espectadores
-        int t = tickSeq.incrementAndGet();
-
-        // STATE a jugadores
-        StringBuilder state = new StringBuilder();
-        state.append("STATE ").append(t).append(' ');
-        for (Map.Entry<Integer, Player> e : players.entrySet()) {
-            Player p = e.getValue();
-            state.append(p.id).append(' ').append(p.x).append(' ').append(p.y).append(' ')
-                 .append(p.lastAckSeq).append(' ').append(p.score).append(' ').append(p.round).append(';');
-        }
-        state.append('\n');
-        for (ClientHandler ch : playerClients) ch.sendLine(state.toString());
-
-        // OBS filtrado por jugador
-        players.forEach((pid, p) -> {
-            CopyOnWriteArrayList<ClientHandler> ls = spectatorsByPlayer.get(pid);
-            if (ls != null && !ls.isEmpty()) {
-                String obs = "OBS " + pid + " " + t + " "
-                           + p.id + " " + p.x + " " + p.y + " "
-                           + p.lastAckSeq + " " + p.score + " " + p.round + ";\n";
-                for (ClientHandler ch : ls) ch.sendLine(obs);
-            }
+        // 3) Notificar estado a los clientes
+        int seq = tickSeq.incrementAndGet();
+        players.forEach((id, p) -> {
+            String state = String.format(
+                    Locale.ROOT,
+                    "STATE %d %d %d %d %d %b%n",
+                    seq, id, p.x, p.y, p.score, p.gameOver
+            );
+            sendToPlayerAndSpectators(id, state);
         });
     }
 
-    /* ========= API para ClientHandler ========= */
-    /**
-     * Maneja la solicitud de un cliente para unirse como jugador.
-     * <p>Asigna un nuevo ID, crea el objeto {@link Player} y una {@link GameSession},
-     * y notifica al cliente con el ID asignado.</p>
-     * @param c El manejador del cliente que solicita unirse.
-     * @param name El nombre de usuario del jugador.
-     */
-    void onJoin(ClientHandler c, String name) {
-        if (players.size() >= 2) { c.sendLine("ERR MAX_PLAYERS\n"); return; }
+    /* ========= Eventos desde ClientHandler ========= */
 
+    /**
+     * Maneja una solicitud de JOIN de un cliente.
+     *
+     * @param c       manejador del cliente que envía la solicitud
+     * @param name    nombre de jugador solicitado
+     */
+    public void onJoin(ClientHandler c, String name) {
         int id = nextId.getAndIncrement();
         Player p = new Player(id, name);
         players.put(id, p);
         byClient.put(c, id);
         playerClients.add(c);
 
-        // crear sesión del jugador con clones de la plantilla admin
-        GameSession s = new GameSession(id);
-        s.loadFromTemplates(templateEnemies, templateFruits);
-        sessions.put(id, s);
+        // Crear sesión de juego
+        GameSession session = new GameSession(id);
 
-        c.sendLine("ASSIGN " + id + "\n");
-        // si había espectadores en espera: activarlos
-        CopyOnWriteArrayList<ClientHandler> waiting = waitingSpectatorsByPlayer.remove(id);
-        if (waiting != null && !waiting.isEmpty()) {
-            CopyOnWriteArrayList<ClientHandler> list = spectatorsByPlayer.computeIfAbsent(id, k -> new CopyOnWriteArrayList<>());
-            for (ClientHandler w : waiting) { list.add(w); w.sendLine("OK SPECTATING " + id + "\n"); }
-        }
+        // Cargar plantillas (enemigos y frutas) en esta sesión
+        session.loadFromTemplates(templateEnemies, templateFruits);
+
+        sessions.put(id, session);
+
+        c.sendLine("JOINED " + id + "\n");
         System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
     }
+
     /**
-     * Maneja el input de movimiento de un jugador.
+     * Maneja una entrada de movimiento desde un cliente jugador.
      *
-     * <p>Crea un nuevo {@link InputEvent} y lo encola en la {@link #inputQueue}
-     * para su procesamiento en el siguiente {@link #tick()}.</p>
-     *
-     * @param c El manejador del cliente que envía el input.
-     * @param seq El número de secuencia del input.
-     * @param dx El desplazamiento en X.
-     * @param dy El desplazamiento en Y.
+     * @param c   manejador del cliente que envía la entrada
+     * @param seq número de secuencia del input (para reconciliación)
+     * @param dx  desplazamiento horizontal (-1, 0 o +1)
+     * @param dy  desplazamiento vertical (-1, 0 o +1)
      */
-    void onInput(ClientHandler c, int seq, int dx, int dy) {
-    Integer id = byClient.get(c);
-    if (id == null) { c.sendLine("ERR NOT_JOINED\n"); return; }
+    public void onInput(ClientHandler c, int seq, int dx, int dy) {
+        Integer id = byClient.get(c);
+        if (id == null) { c.sendLine("ERR NOT_PLAYER\n"); return; }
 
-    Player p = players.get(id);
-    if (p == null) return;
-
-    // si ya perdió, no aceptamos más movimientos
-    if (p.gameOver) {
-        c.sendLine("ERR GAME_OVER\n");
-        return;
+        // rate limit si ya lo tenías...
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) { c.sendLine("ERR STEP_TOO_BIG\n"); return; }
+        inputQueue.offer(new InputEvent(id, seq, dx, dy));
     }
 
-    // rate limit si ya lo tenías...
-
-    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) { c.sendLine("ERR STEP_TOO_BIG\n"); return; }
-    inputQueue.offer(new InputEvent(id, seq, dx, dy));
-}
     /**
      * Maneja la solicitud de un cliente para unirse como espectador.
      *
@@ -355,25 +344,29 @@ public final class Server {
      * @param c El manejador del cliente que solicita ser espectador.
      * @param playerId El ID del jugador al que desea observar.
      */
-    void onSpectate(ClientHandler c, int playerId) {
-        if (players.containsKey(playerId)) {
-            CopyOnWriteArrayList<ClientHandler> list = spectatorsByPlayer.computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>());
-            if (list.size() >= 2) { c.sendLine("ERR MAX_SPECTATORS\n"); return; }
-            list.add(c);
-            c.sendLine("OK SPECTATING " + playerId + "\n");
-            return;
+    public void onSpectate(ClientHandler c, int playerId) {
+        Player p = players.get(playerId);
+        if (p != null) {
+            spectatorsByPlayer
+                .computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>())
+                .add(c);
+            c.sendLine("SPECTATE_OK " + playerId + "\n");
+        } else {
+            waitingSpectatorsByPlayer
+                .computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>())
+                .add(c);
+            c.sendLine("SPECTATE_WAIT " + playerId + "\n");
         }
-        CopyOnWriteArrayList<ClientHandler> waitList = waitingSpectatorsByPlayer.computeIfAbsent(playerId, k -> new CopyOnWriteArrayList<>());
-        waitList.add(c);
-        c.sendLine("OK WAITING " + playerId + "\n");
     }
+
     /**
-     * Método llamado por el {@link ClientHandler} cuando su hilo termina (por error de I/O o desconexión).
+     * Maneja la desconexión lógica de un cliente.
      *
-     * @param c El manejador del cliente a remover.
+     * @param c manejador de cliente que se está desconectando
      */
-    void onQuit(ClientHandler c) {
+    public void onQuit(ClientHandler c) {
         Integer id = byClient.remove(c);
+
         if (id != null) {
             endPlayerSession(id);
         } else {
@@ -392,18 +385,21 @@ public final class Server {
      * @param playerId El ID del jugador cuya sesión debe terminar.
      */
     private void endPlayerSession(int playerId) {
-        // avisar a espectadores y limpiar
-        CopyOnWriteArrayList<ClientHandler> ls = spectatorsByPlayer.remove(playerId);
-        if (ls != null) for (ClientHandler sp : ls) sp.sendLine("OBS_END " + playerId + "\n");
-        waitingSpectatorsByPlayer.remove(playerId);
-
-        // cerrar handler del jugador si sigue conectado
+        GameSession s = sessions.get(playerId);
+        if (s != null) {
+            CopyOnWriteArrayList<ClientHandler> specs = spectatorsByPlayer.remove(playerId);
+            if (specs != null) {
+                for (ClientHandler ch : specs) {
+                    ch.sendLine("END " + playerId + "\n");
+                }
+            }
+        }
+        // cerrar también el clientHandler asociado, si existe
         ClientHandler toClose = null;
         for (Map.Entry<ClientHandler,Integer> e : byClient.entrySet()) {
             if (e.getValue() == playerId) { toClose = e.getKey(); break; }
         }
         if (toClose != null) {
-            byClient.remove(toClose);
             playerClients.remove(toClose);
             toClose.sendLine("BYE\n");
             toClose.close();
@@ -414,35 +410,63 @@ public final class Server {
         System.out.println("[JAVA] Fin de sesión -> id=" + playerId);
     }
 
+    /**
+     * Envía una línea de texto a un jugador y a todos los espectadores asociados.
+     * <p>Si el jugador no existe o no tiene clientes asociados, la llamada no
+     * realiza ninguna acción.</p>
+     *
+     * @param playerId identificador del jugador dueño de la sesión
+     * @param line     línea de texto a enviar (debe incluir el salto de línea si se requiere)
+     */
     private void sendToPlayerAndSpectators(int playerId, String line) {
         // a jugador:
         for (Map.Entry<ClientHandler,Integer> e : byClient.entrySet()) {
             if (e.getValue() == playerId) e.getKey().sendLine(line);
         }
-        // a sus espectadores:
+        // a espectadores:
         CopyOnWriteArrayList<ClientHandler> ls = spectatorsByPlayer.get(playerId);
         if (ls != null) for (ClientHandler ch : ls) ch.sendLine(line);
     }
 
+    /**
+     * Envía una línea de texto a todos los clientes conectados al servidor.
+     *
+     * @param line línea de texto a enviar (debe incluir el salto de línea si se requiere)
+     */
     public void broadcast(String line) {
         for (ClientHandler ch : clients) ch.sendLine(line);
     }
 
+    /**
+     * Notifica al servidor que un cliente debe ser removido de la lista global.
+     *
+     * @param c cliente a remover
+     */
     void removeClient(ClientHandler c) {
         clients.remove(c);
         onQuit(c);
         System.out.println("[JAVA] Cliente removido. Conectados: " + clients.size());
     }
 
+    /**
+     * Detiene ordenadamente el servidor.
+     * <p>Cierra el socket principal, detiene el hilo de administración,
+     * apaga el planificador de ticks y cierra todas las conexiones activas
+     * con los clientes.</p>
+     */
     public void stop() {
         try {
-            ticker.shutdownNow();
-            for (ClientHandler c : clients) c.close();
-            clients.clear();
-            pool.shutdownNow();
-            if (serverSocket != null && !serverSocket.isClosed()) serverSocket.close();
-            System.out.println("[JAVA] Servidor detenido.");
-        } catch (IOException e) { e.printStackTrace(); }
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+        } catch (IOException ignored) {}
+
+        ticker.shutdownNow();
+        pool.shutdownNow();
+        for (ClientHandler ch : clients) {
+            ch.close();
+        }
+        System.out.println("[JAVA] Servidor detenido.");
     }
 
     /* ========= Consola Admin (Abstract Factory) ========= */
@@ -461,40 +485,30 @@ public final class Server {
         } catch (Exception ignored) {}
     }
 
-    
-    /** 
- * Permite ejecutar un comando de administración desde otra clase (por ejemplo, la interfaz gráfica).
- * Reutiliza la misma lógica de parsing que antes se usaba solo por consola.
- */
+    /**
+     * Procesa un comando introducido en la consola de administración.
+     * <p>Permite, por ejemplo, listar jugadores activos, sesiones o
+     * cerrar el servidor con comandos específicos.</p>
+     *
+     * @param line comando completo leído desde la consola de administración
+     */
     public void runAdminCommand(String line) {
-        try {
-            String[] t = line.split("\\s+");
-            if (t.length >= 4 && "ADMIN".equalsIgnoreCase(t[0]) && "CROCODILE".equalsIgnoreCase(t[1])) {
-                String type = t[2]; int liana = Integer.parseInt(t[3]);
-                int y = (t.length > 4) ? Integer.parseInt(t[4]) : MIN_Y;
-                templateEnemies.add(factory.createCrocodile(type, liana, y));
-                System.out.println("[ADMIN] CROCODILE " + type + " @" + liana + "," + y + " (plantilla)");
-            } else if (t.length >= 6 && "ADMIN".equalsIgnoreCase(t[0]) && "FRUIT".equalsIgnoreCase(t[1]) && "CREATE".equalsIgnoreCase(t[2])) {
-                int l = Integer.parseInt(t[3]), y = Integer.parseInt(t[4]), pts = Integer.parseInt(t[5]);
-                templateFruits.add(factory.createFruit(l, y, pts));
-                System.out.println("[ADMIN] FRUIT +" + l + "," + y + " pts=" + pts + " (plantilla)");
-            } else if (t.length >= 5 && "ADMIN".equalsIgnoreCase(t[0]) && "FRUIT".equalsIgnoreCase(t[1]) && "DELETE".equalsIgnoreCase(t[2])) {
-                int l = Integer.parseInt(t[3]), y = Integer.parseInt(t[4]);
-                templateFruits.removeIf(f -> f.getX()==l && f.getY()==y);
-                System.out.println("[ADMIN] FRUIT -" + l + "," + y + " (plantilla)");
-            } else {
-                System.out.println("[ADMIN] Comando inválido");
-            }
-        } catch (Exception e) {
-            System.out.println("[ADMIN] Error: " + e.getMessage());
+        if (line.equalsIgnoreCase("players")) {
+            System.out.println("Jugadores conectados:");
+            players.forEach((id, p) -> System.out.println(" - " + id + " " + p.name));
+        } else if (line.equalsIgnoreCase("sessions")) {
+            System.out.println("Sesiones activas:");
+            sessions.forEach((id, s) -> System.out.println(" - " + id));
+        } else if (line.equalsIgnoreCase("broadcast test")) {
+            broadcast("SERVER MSG: test\n");
+        } else {
+            System.out.println("Comando desconocido: " + line);
         }
     }
 
-    //Main
     /**
-     * Punto de entrada principal para el servidor.
-     *
-     * <p>Configura un <b>Shutdown Hook</b> para asegurar el cierre correcto
+     * Método principal del servidor.
+     * <p>Configura un hook de apagado para detener correctamente el socket
      * del servidor (llamando a {@link #stop()}) cuando la JVM se detiene
      * (por ejemplo, con CTRL+C) e inicia el servidor.</p>
      *

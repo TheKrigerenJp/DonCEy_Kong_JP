@@ -10,12 +10,28 @@ import java.io.IOException;
 
 /**
  * Aplicación JavaFX para el administrador del juego DonCEy Kong Jr.
- * 
- * - Arranca el servidor en un hilo aparte.
- * - Muestra una ventana con controles para crear cocodrilos y frutas.
+ * <p>
+ * Esta clase:
+ * <ul>
+ *     <li>Arranca el servidor en un hilo aparte.</li>
+ *     <li>Carga y muestra la ventana de administración definida en el FXML.</li>
+ * </ul>
+ * Extiende {@link Application}, por lo que su punto de inicio gráfico es
+ * el método {@link #start(Stage)}.
  */
 public class AdminApp extends Application {
 
+    /**
+     * Punto de entrada de JavaFX.
+     * <p>
+     * Carga el archivo FXML de la ventana principal, crea la escena y la muestra
+     * en el {@link Stage} recibido. Además, inicia el servidor en segundo plano
+     * llamando a {@link #startServerInBackground()}.
+     * </p>
+     *
+     * @param stage ventana principal de la aplicación donde se colocará la escena
+     * @throws Exception si ocurre algún error al cargar el FXML o configurar la escena
+     */
     @Override
     public void start(Stage stage) throws Exception {
         // Carga el FXML de la ventana principal
@@ -30,6 +46,17 @@ public class AdminApp extends Application {
         startServerInBackground();
     }
 
+    /**
+     * Inicia el servidor de juego en un hilo separado.
+     * <p>
+     * Este método crea un hilo tipo "daemon" que invoca
+     * {@link Server#getInstance()} seguido de {@link Server#start()}.
+     * Al ser daemon, no impide que la aplicación JavaFX termine
+     * cuando se cierre la ventana.
+     * </p>
+     *
+     * No recibe parámetros ni retorna ningún valor.
+     */
     private void startServerInBackground() {
         Thread t = new Thread(() -> {
             try {
@@ -42,6 +69,15 @@ public class AdminApp extends Application {
         t.start();
     }
 
+    /**
+     * Método main estándar de una aplicación JavaFX.
+     * <p>
+     * Delegará el control al método {@link #start(Stage)} a través de
+     * la llamada {@link #launch(String...)}.
+     * </p>
+     *
+     * @param args argumentos de la línea de comandos (no utilizados actualmente)
+     */
     public static void main(String[] args) {
         launch(args);
     }

@@ -10,16 +10,39 @@ import Server.entities.RedCroc;
 import Server.entities.BlueCroc;
 import Server.entities.SimpleFruit;
 
+/**
+ * Representa la sesión de juego individual asociada a un jugador.
+ * <p>
+ * En esta sesión se almacena la información de spawn, meta y las listas
+ * de enemigos y frutas que se simulan específicamente para el jugador.
+ * Además, permite cargar estos elementos a partir de plantillas definidas
+ * en el servidor.
+ * </p>
+ */
 public class GameSession {
+    /** ID del jugador al que pertenece esta sesión. */
     public final int playerId;
+    /** Coordenadas de aparición (spawn) del jugador en el mapa. */
     public int spawnX, spawnY;
+    /** Coordenadas de la meta (goal) para el jugador. */
     public int goalX, goalY;
+    /** Lista de enemigos activos en la sesión de este jugador. */
     public final CopyOnWriteArrayList<Enemy> enemies = new CopyOnWriteArrayList<>();
+    /** Lista de frutas activas en la sesión de este jugador. */
     public final CopyOnWriteArrayList<Fruit> fruits  = new CopyOnWriteArrayList<>();
 
-    // “Velocidad lógica” de enemigos para este jugador (pasos por tick)
+    /**
+     * “Velocidad lógica” de enemigos para este jugador (pasos por tick).
+     * Puede ajustarse para aumentar o disminuir la dificultad de la sesión.
+     */
     public int enemySpeedSteps = 1;
 
+    /**
+     * Crea una nueva sesión de juego para el jugador indicado,
+     * inicializando las posiciones de spawn y meta por defecto.
+     *
+     * @param playerId identificador del jugador dueño de esta sesión
+     */
     public GameSession(int playerId) { 
         this.playerId = playerId;
         this.spawnX = 0;  // S está en x=0, y=1
@@ -28,7 +51,17 @@ public class GameSession {
         this.goalY  = 10; 
     }
 
-    /** Clona listas plantilla del servidor a esta sesión */
+    /**
+     * Carga los enemigos y frutas de la sesión a partir de listas plantilla.
+     * <p>
+     * Este método limpia las listas actuales de {@link #enemies} y
+     * {@link #fruits}, y crea nuevas instancias basadas en las plantillas
+     * recibidas, de forma que cada sesión tenga sus propios objetos.
+     * </p>
+     *
+     * @param tplEnemies lista plantilla de enemigos definida a nivel de servidor
+     * @param tplFruits  lista plantilla de frutas definida a nivel de servidor
+     */
     public void loadFromTemplates(List<Enemy> tplEnemies, List<Fruit> tplFruits) {
         enemies.clear();
         fruits.clear();
