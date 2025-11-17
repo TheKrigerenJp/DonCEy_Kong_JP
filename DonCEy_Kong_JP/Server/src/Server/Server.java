@@ -486,25 +486,190 @@ public class Server {
     }
 
     /**
-     * Procesa un comando introducido en la consola de administración.
-     * <p>Permite, por ejemplo, listar jugadores activos, sesiones o
-     * cerrar el servidor con comandos específicos.</p>
+     * Ejecuta un comando de administración.
      *
-     * @param line comando completo leído desde la consola de administración
+     * <p>Soporta dos modos:</p>
+     * <ul>
+     *     <li>Modificar las <b>plantillas globales</b> (comportamiento original).</li>
+     *     <li>Modificar la <b>partida de un jugador específico</b> si se indica un ID.</li>
+     * </ul>
+     *
+     * Formatos admitidos:
+     * <pre>
+     * ADMIN CROCODILE &lt;type&gt; &lt;liana&gt; [y] [playerId]
+     * ADMIN FRUIT CREATE &lt;liana&gt; &lt;y&gt; &lt;pts&gt; [playerId]
+     * ADMIN FRUIT DELETE &lt;liana&gt; &lt;y&gt; [playerId]
+     * </pre>
+     *
+     * Si no se proporciona <code>playerId</code>, el cambio se aplica a las plantillas
+     * {@link #templateEnemies} y {@link #templateFruits}. Si se proporciona, el cambio
+     * se aplica únicamente a la sesión de juego correspondiente a ese jugador.
+     *
+     * @param line Línea de comando completa introducida por consola o por la UI.
      */
     public void runAdminCommand(String line) {
-        if (line.equalsIgnoreCase("players")) {
-            System.out.println("Jugadores conectados:");
-            players.forEach((id, p) -> System.out.println(" - " + id + " " + p.name));
-        } else if (line.equalsIgnoreCase("sessions")) {
-            System.out.println("Sesiones activas:");
-            sessions.forEach((id, s) -> System.out.println(" - " + id));
-        } else if (line.equalsIgnoreCase("broadcast test")) {
-            broadcast("SERVER MSG: test\n");
-        } else {
-            System.out.println("Comando desconocido: " + line);
+        try {
+            if (line == null || line.trim().isEmpty()) {
+                return;
+            }
+
+            String[] t = line.trim().split("\\s+");
+            if (t.length < 2 || !"ADMIN".equalsIgnoreCase(t[0])) {
+                System.out.println("[ADMIN] Comando inválido: " + line);
+                return;
+            }
+
+            // ================== CROCODILE ==================
+            if ("CROCODILE".equalsIgnoreCase(t[1])) {
+                if (t.length < 4) {
+                    System.out.println("[ADMIN] Uso: ADMIN CROCODILE <type> <liana> [y] [playerId]");
+                    return;
+                }
+
+                String type  = t[2];
+                int liana    = Integer.parseInt(t[3]);
+                int y;
+                Integer playerId = null;
+
+                if (t.length == 4) {
+                    // Sin Y ni playerId → usar MIN_Y, plantilla global
+                    y = MIN_Y;
+                } else if (t.length == 5) {
+                    // Tiene Y, pero no playerId
+                    y = Integer.parseInt(t[4]);
+                } else {
+                    // Tiene Y y playerId
+                    y = Integer.parseInt(t[4]);
+                    playerId = Integer.parseInt(t[5]);
+                }
+
+                if (playerId == null) {
+                    // Plantilla global
+                    templateEnemies.add(factory.createCrocodile(type, liana, y));
+                    System.out.println("[ADMIN] CROCODILE " + type + " @" + liana + "," + y + " (plantilla)");
+                } else {
+                    // Solo para ese jugador
+                    addEnemyToPlayerSession(playerId, type, liana, y);
+                }
+                return;
+            }
+
+            // ================== FRUIT ==================
+            if ("FRUIT".equalsIgnoreCase(t[1]) && t.length >= 3) {
+                String sub = t[2];
+
+                // ---------- CREATE ----------
+                if ("CREATE".equalsIgnoreCase(sub)) {
+                    if (t.length < 6) {
+                        System.out.println("[ADMIN] Uso: ADMIN FRUIT CREATE <liana> <y> <pts> [playerId]");
+                        return;
+                    }
+                    int l   = Integer.parseInt(t[3]);
+                    int y   = Integer.parseInt(t[4]);
+                    int pts = Integer.parseInt(t[5]);
+                    Integer playerId = (t.length >= 7) ? Integer.parseInt(t[6]) : null;
+
+                    if (playerId == null) {
+                        templateFruits.add(factory.createFruit(l, y, pts));
+                        System.out.println("[ADMIN] FRUIT +" + l + "," + y + " pts=" + pts + " (plantilla)");
+                    } else {
+                        addFruitToPlayerSession(playerId, l, y, pts);
+                    }
+                    return;
+                }
+
+                // ---------- DELETE ----------
+                if ("DELETE".equalsIgnoreCase(sub)) {
+                    if (t.length < 5) {
+                        System.out.println("[ADMIN] Uso: ADMIN FRUIT DELETE <liana> <y> [playerId]");
+                        return;
+                    }
+                    int l = Integer.parseInt(t[3]);
+                    int y = Integer.parseInt(t[4]);
+                    Integer playerId = (t.length >= 6) ? Integer.parseInt(t[5]) : null;
+
+                    if (playerId == null) {
+                        templateFruits.removeIf(f -> f.getX() == l && f.getY() == y);
+                        System.out.println("[ADMIN] FRUIT -" + l + "," + y + " (plantilla)");
+                    } else {
+                        removeFruitFromPlayerSession(playerId, l, y);
+                    }
+                    return;
+                }
+            }
+
+            System.out.println("[ADMIN] Comando no reconocido: " + line);
+        } catch (Exception ex) {
+            System.out.println("[ADMIN] Error al procesar comando: " + line);
+            ex.printStackTrace();
         }
     }
+
+
+    // =====================
+    //  Helpers de Admin
+    // =====================
+
+    /**
+     * Agrega un cocodrilo a la sesión de juego de un jugador específico.
+     *
+     * @param playerId ID del jugador cuya partida se quiere modificar.
+     * @param type     Tipo de cocodrilo ("RED" o "BLUE").
+     * @param liana    Coordenada X o liana donde se ubica el enemigo.
+     * @param y        Coordenada Y inicial del enemigo.
+     */
+    private void addEnemyToPlayerSession(int playerId, String type, int liana, int y) {
+        GameSession session = sessions.get(playerId);
+        if (session == null) {
+            System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
+            return;
+        }
+
+        Enemy enemy = factory.createCrocodile(type, liana, y);
+        session.enemies.add(enemy);
+        System.out.println("[ADMIN] CROCODILE " + type + " @" + liana + "," + y +
+                " → jugador " + playerId);
+    }
+
+    /**
+     * Agrega una fruta a la sesión de juego de un jugador específico.
+     *
+     * @param playerId ID del jugador cuya partida se quiere modificar.
+     * @param l        Coordenada X (liana) de la fruta.
+     * @param y        Coordenada Y de la fruta.
+     * @param pts      Puntos que otorga la fruta.
+     */
+    private void addFruitToPlayerSession(int playerId, int l, int y, int pts) {
+        GameSession session = sessions.get(playerId);
+        if (session == null) {
+            System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
+            return;
+        }
+
+        Fruit fruit = factory.createFruit(l, y, pts);
+        session.fruits.add(fruit);
+        System.out.println("[ADMIN] FRUIT +" + l + "," + y + " pts=" + pts +
+                " → jugador " + playerId);
+    }
+
+    /**
+     * Elimina una fruta de la sesión de juego de un jugador específico.
+     *
+     * @param playerId ID del jugador cuya partida se quiere modificar.
+     * @param l        Coordenada X (liana) de la fruta.
+     * @param y        Coordenada Y de la fruta.
+     */
+    private void removeFruitFromPlayerSession(int playerId, int l, int y) {
+        GameSession session = sessions.get(playerId);
+        if (session == null) {
+            System.out.println("[ADMIN] No existe sesión para jugador " + playerId);
+            return;
+        }
+
+        session.fruits.removeIf(f -> f.getX() == l && f.getY() == y);
+        System.out.println("[ADMIN] FRUIT -" + l + "," + y + " → jugador " + playerId);
+    }
+
 
     /**
      * Método principal del servidor.

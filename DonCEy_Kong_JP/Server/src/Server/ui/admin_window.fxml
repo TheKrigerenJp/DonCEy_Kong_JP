@@ -8,11 +8,20 @@
             fx:controller="Server.ui.AdminWindowController"
             prefWidth="900" prefHeight="420">
 
-    <!-- Título principal -->
     <children>
+        <!-- Título principal -->
         <Label layoutX="310.0" layoutY="15.0"
                text="Panel de control - DonCEy Kong Jr."
                style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+
+        <!-- Selector de jugador destino -->
+        <Label layoutX="30.0" layoutY="45.0"
+               text="Jugador destino (ID):"
+               style="-fx-font-size: 13px;"/>
+        <TextField fx:id="playerIdField"
+                   layoutX="170.0" layoutY="41.0"
+                   prefWidth="120.0"
+                   promptText="Vacío = plantillas"/>
 
         <!-- Bloque izquierda: ENEMIGOS -->
         <TitledPane text="Gestión de enemigos"

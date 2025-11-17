@@ -29,6 +29,18 @@ import java.util.ResourceBundle;
  */
 public class AdminWindowController implements Initializable {
 
+    /* === Controles para selección de jugador === */
+
+    /**
+     * Campo de texto donde el administrador puede escribir el ID del jugador
+     * cuya partida desea modificar.
+     *
+     * Si se deja vacío, los cambios se aplican a las plantillas globales
+     * del servidor.
+     */
+    @FXML private TextField playerIdField;
+
+
     /* === Controles para cocodrilos === */
 
     /** Selector del tipo de cocodrilo (por ejemplo, "RED" o "BLUE"). */
@@ -71,10 +83,10 @@ public class AdminWindowController implements Initializable {
      */
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        // Tipos de cocodrilo como en el proyecto nuevo: RED / BLUE
-        crocTypeChoiceBox.setItems(FXCollections.observableArrayList("RED", "BLUE"));
-        crocTypeChoiceBox.getSelectionModel().selectFirst();
-
+        if (crocTypeChoiceBox != null) {
+            crocTypeChoiceBox.setItems(FXCollections.observableArrayList("RED", "BLUE"));
+            crocTypeChoiceBox.getSelectionModel().selectFirst();
+        }
         appendLog("Interfaz de admin lista. Servidor arrancando...");
     }
 
@@ -101,25 +113,31 @@ public class AdminWindowController implements Initializable {
      */
     @FXML
     private void onCreateCrocodile() {
-        String type = crocTypeChoiceBox.getValue();
-        String lianaText = crocLianaField.getText().trim();
-        String yText = crocYField.getText().trim();
+        String type        = crocTypeChoiceBox.getValue();
+        String lianaText   = crocLianaField.getText().trim();
+        String yText       = crocYField.getText().trim();
+        String playerIdTxt = (playerIdField != null) ? playerIdField.getText().trim() : "";
 
         if (lianaText.isEmpty()) {
             showError("Debe indicar la liana (x) para el cocodrilo.");
             return;
         }
 
-        String cmd;
-        if (yText.isEmpty()) {
-            // Usa MIN_Y interno del servidor (como cuando no se especifica)
-            cmd = "ADMIN CROCODILE " + type + " " + lianaText;
-        } else {
-            cmd = "ADMIN CROCODILE " + type + " " + lianaText + " " + yText;
+        StringBuilder cmd = new StringBuilder("ADMIN CROCODILE ")
+                .append(type)
+                .append(" ")
+                .append(lianaText);
+
+        if (!yText.isEmpty()) {
+            cmd.append(" ").append(yText);
+        }
+        if (!playerIdTxt.isEmpty()) {
+            cmd.append(" ").append(playerIdTxt);
         }
 
-        Server.getInstance().runAdminCommand(cmd);
-        appendLog("→ " + cmd);
+        String command = cmd.toString();
+        Server.getInstance().runAdminCommand(command);
+        appendLog("→ " + command);
     }
 
     /**
@@ -141,18 +159,28 @@ public class AdminWindowController implements Initializable {
      */
     @FXML
     private void onCreateFruit() {
-        String lianaText = fruitLianaField.getText().trim();
-        String yText = fruitYField.getText().trim();
-        String pointsText = fruitPointsField.getText().trim();
+        String lianaText   = fruitLianaField.getText().trim();
+        String yText       = fruitYField.getText().trim();
+        String pointsText  = fruitPointsField.getText().trim();
+        String playerIdTxt = (playerIdField != null) ? playerIdField.getText().trim() : "";
 
         if (lianaText.isEmpty() || yText.isEmpty() || pointsText.isEmpty()) {
-            showError("Debe indicar liana, y y puntos para crear una fruta.");
+            showError("Debe indicar liana (x), y y puntos para la fruta.");
             return;
         }
 
-        String cmd = "ADMIN FRUIT CREATE " + lianaText + " " + yText + " " + pointsText;
-        Server.getInstance().runAdminCommand(cmd);
-        appendLog("→ " + cmd);
+        StringBuilder cmd = new StringBuilder("ADMIN FRUIT CREATE ")
+                .append(lianaText).append(" ")
+                .append(yText).append(" ")
+                .append(pointsText);
+
+        if (!playerIdTxt.isEmpty()) {
+            cmd.append(" ").append(playerIdTxt);
+        }
+
+        String command = cmd.toString();
+        Server.getInstance().runAdminCommand(command);
+        appendLog("→ " + command);
     }
 
     /**
@@ -174,17 +202,26 @@ public class AdminWindowController implements Initializable {
      */
     @FXML
     private void onDeleteFruit() {
-        String lianaText = fruitLianaField.getText().trim();
-        String yText = fruitYField.getText().trim();
+        String lianaText   = fruitLianaField.getText().trim();
+        String yText       = fruitYField.getText().trim();
+        String playerIdTxt = (playerIdField != null) ? playerIdField.getText().trim() : "";
 
         if (lianaText.isEmpty() || yText.isEmpty()) {
-            showError("Debe indicar liana y y para eliminar una fruta.");
+            showError("Debe indicar liana (x) y y de la fruta a borrar.");
             return;
         }
 
-        String cmd = "ADMIN FRUIT DELETE " + lianaText + " " + yText;
-        Server.getInstance().runAdminCommand(cmd);
-        appendLog("→ " + cmd);
+        StringBuilder cmd = new StringBuilder("ADMIN FRUIT DELETE ")
+                .append(lianaText).append(" ")
+                .append(yText);
+
+        if (!playerIdTxt.isEmpty()) {
+            cmd.append(" ").append(playerIdTxt);
+        }
+
+        String command = cmd.toString();
+        Server.getInstance().runAdminCommand(command);
+        appendLog("→ " + command);
     }
 
     /* === Utils de UI === */
