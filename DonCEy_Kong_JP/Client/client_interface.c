@@ -440,6 +440,11 @@ void run_player_mode(ClientState *state)
     /* 4) Bucle de juego */
     while (!WindowShouldClose()) {
 
+        // Salir de la partida y volver al menú con ESC
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            break;
+        }
+
         /* --- Leer estado del servidor --- */
         int len = recv_line(state->socket_fd, line, sizeof(line));
         if (len <= 0) {
@@ -611,18 +616,25 @@ void run_spectator_mode(ClientState *state)
  * Flujo:
  *  1. Inicializar WinSock (WSAStartup).
  *  2. Crear ventana de Raylib.
- *  3. Mostrar pantalla de selección de rol.
- *  4. Si se selecciona un rol, conectar al servidor.
- *  5. Ejecutar el modo correspondiente (jugador / espectador).
- *  6. Cerrar socket, ventana y limpiar WinSock.
+ *  3. Entrar en un bucle principal donde:
+ *      3.1. Se muestra la pantalla de selección de rol.
+ *      3.2. Si se elige JUGADOR o ESPECTADOR:
+ *           - Se crea una conexión al servidor.
+ *           - Se ejecuta el modo correspondiente (jugador / espectador).
+ *           - Al salir de ese modo (por ejemplo con ESC), se cierra el socket
+ *             y se regresa a la pantalla de selección.
+ *      3.3. Si se cierra la ventana o no se elige ningún rol, se sale del bucle.
+ *  4. Cerrar ventana y limpiar WinSock.
  *
  * @return 0 en salida normal, 1 en caso de error de WinSock o conexión.
  */
 int main(void)
 {
     ClientState state;
+    // Inicializamos toda la estructura a cero por seguridad
+    memset(&state, 0, sizeof(ClientState));
     state.socket_fd = INVALID_SOCKET;
-    state.role = ROLE_NONE;
+    state.role      = ROLE_NONE;
     state.connected = 0;
 
     // --- Inicializar WinSock ---
@@ -633,40 +645,60 @@ int main(void)
         return 1;
     }
 
+    // --- Inicializar ventana Raylib ---
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "DonCEy Kong Jr - Cliente");
     SetTargetFPS(60);
+    // Evitar que ESC cierre la ventana automáticamente
+    SetExitKey(KEY_NULL);
 
-    // 1) Pantalla inicial: escoger Jugador o Espectador
-    state.role = run_role_selection_screen();
+    int running = 1;
 
-    if (state.role == ROLE_NONE) {
-        CloseWindow();
-        WSACleanup();
-        return 0;
+    while (running && !WindowShouldClose()) {
+
+        // 1) Mostrar pantalla inicial: escoger Jugador o Espectador
+        state.role = run_role_selection_screen();
+
+        // Si se cerró la ventana dentro de la pantalla de rol o no se eligió nada:
+        if (state.role == ROLE_NONE || WindowShouldClose()) {
+            break;
+        }
+
+        // 2) Conectar al servidor Java
+        state.socket_fd = create_and_connect_socket(SERVER_IP, SERVER_PORT);
+        if (state.socket_fd == INVALID_SOCKET) {
+            printf("No se pudo conectar al servidor.\n");
+            // Si quieres, puedes mostrar un texto en pantalla en vez de salir
+            running = 0;
+            break;
+        }
+        state.connected = 1;
+
+        // 3) Ejecutar modo según rol seleccionado
+        if (state.role == ROLE_PLAYER) {
+            run_player_mode(&state);
+        } else if (state.role == ROLE_SPECTATOR) {
+            run_spectator_mode(&state);
+        }
+
+        // 4) Al salir del modo (por ESC o por desconexión), cerramos socket
+        if (state.connected && state.socket_fd != INVALID_SOCKET) {
+            close_socket(state.socket_fd);
+            state.socket_fd = INVALID_SOCKET;
+            state.connected = 0;
+        }
+
+        // Importante: aquí NO cerramos la ventana.
+        // El while se repite y volvemos a mostrar el menú.
     }
 
-    // 2) Conectar al servidor Java
-    state.socket_fd = create_and_connect_socket(SERVER_IP, SERVER_PORT);
-    if (state.socket_fd == INVALID_SOCKET) {
-        CloseWindow();
-        WSACleanup();
-        return 1;
-    }
-    state.connected = 1;
-
-    // 3) Ejecutar modo según rol
-    if (state.role == ROLE_PLAYER) {
-        run_player_mode(&state);
-    } else if (state.role == ROLE_SPECTATOR) {
-        run_spectator_mode(&state);
-    }
-
-    // 4) Cerrar recursos
-    if (state.connected) {
-        close_socket(state.socket_fd);
+    // 5) Cerrar ventana y limpiar WinSock
+    if (!WindowShouldClose()) {
+        // Si sales del while por una condición propia, igual cerramos la ventana
+        // (si ya está cerrada, Raylib lo maneja internamente).
     }
     CloseWindow();
+    WSACleanup();
 
-    WSACleanup();    // Finalizar WinSock
     return 0;
 }
+
