@@ -331,12 +331,16 @@ static void draw_game_scene(const ClientState *state)
     /* HUD sencillo */
     DrawText("DonCEy Kong Jr - Cliente", 10, 10, 20, RAYWHITE);
 
-    char hud[128];
-    snprintf(hud, sizeof(hud), "Jugador ID: %d  Score: %d  GameOver: %s",
+    char hud[160];
+    snprintf(hud, sizeof(hud),
+             "ID: %d  Nivel: %d  Vidas: %d  Score: %d  GameOver: %s",
              state->playerId,
+             state->level,
+             state->lives,
              state->score,
              state->gameOver ? "SI" : "NO");
     DrawText(hud, 10, WINDOW_HEIGHT - 30, 16, LIGHTGRAY);
+
 }
 
 
@@ -469,15 +473,17 @@ void run_player_mode(ClientState *state)
          */
         char tag[16];
         char gameOverStr[8];
-        int  s, pid, x, y, score;
-        if (sscanf(line, "%15s %d %d %d %d %d %7s",
-                   tag, &s, &pid, &x, &y, &score, gameOverStr) == 7 &&
+        int  s, pid, x, y, score, level, lives;
+        if (sscanf(line, "%15s %d %d %d %d %d %d %d %7s",
+                   tag, &s, &pid, &x, &y, &score, &level, &lives, gameOverStr) == 9 &&
             strcmp(tag, "STATE") == 0) {
 
             if (pid == state->playerId) {
                 state->playerX  = x;
                 state->playerY  = y;
                 state->score    = score;
+                state->level    = level;
+                state->lives    = lives;
                 state->gameOver = (strcmp(gameOverStr, "true") == 0);
             }
         }

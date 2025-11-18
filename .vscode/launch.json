@@ -1,14 +1,20 @@
 {
   "version": "0.2.0",
   "configurations": [
-
     {
-        "type": "java",
-        "name": "Launch DonCEyKong",
-        "request": "launch",
-        "mainClass": "Server.ui.AdminApp",
-        "projectName": "DonCEy_Kong_JP_b4dd4145",
-        "vmArgs": "--module-path \"${workspaceFolder}/DonCEy_Kong_JP/Server/lib/javafx-sdk-25.0.1/lib\" --add-modules javafx.controls,javafx.fxml --enable-native-access=javafx.graphics"
+      "type": "java",
+      "name": "Admin",
+      "request": "launch",
+      "mainClass": "Server.Admin",
+      "projectName": "DonCEy_Kong_JP_b4dd4145"
+    },
+    {
+      "type": "java",
+      "name": "Launch DonCEyKong",
+      "request": "launch",
+      "mainClass": "Server.ui.AdminApp",
+      "projectName": "DonCEy_Kong_JP_b4dd4145",
+      "vmArgs": "--module-path \"${workspaceFolder}/DonCEy_Kong_JP/Server/lib/javafx-sdk-25.0.1/lib\" --add-modules javafx.controls,javafx.fxml --enable-native-access=javafx.graphics"
     }
-]
+  ]
 }

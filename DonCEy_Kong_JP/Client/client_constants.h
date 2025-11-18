@@ -112,12 +112,15 @@ typedef struct {
     int playerX;
     int playerY;
     int score;
+    int level;   /* nivel actual enviado por el servidor */
+    int lives;   /* vidas restantes */
     int gameOver;
 
     int        numPlayers;
     PlayerInfo players[MAX_PLAYERS];
 
 } ClientState;
+
 
 
 // ---------------- Prototipos: funciones de sockets ----------------

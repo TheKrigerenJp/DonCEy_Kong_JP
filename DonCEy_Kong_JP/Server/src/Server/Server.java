@@ -119,7 +119,7 @@ public class Server {
      * Cada fila representa una coordenada Y y cada columna una coordenada X.
      */
     private static final char[][] MAP = {
-        "WWTWWTWTWWW".toCharArray(), // y=0
+        "TTTWWTWTWWW".toCharArray(), // y=0
         "S==..=T..==".toCharArray(), // y=1
         "..|.......=".toCharArray(), // y=2
         "..|..===..=".toCharArray(), // y=3
@@ -302,33 +302,44 @@ public class Server {
      * </ol>
      */
     private void tick() {
-        // 1) inputs → posiciones (con límites) + ack
-        //    y detectamos quién se movió hacia arriba en este tick
-        Set<Integer> jumpedThisTick = new HashSet<>();
+    // 1) inputs → posiciones (con límites) + ack
+    //    y detectamos quién se movió hacia arriba en este tick
+    Set<Integer> jumpedThisTick = new HashSet<>();
 
-        InputEvent ev;
-        while ((ev = inputQueue.poll()) != null) {
-            Player p = players.get(ev.playerId);
-            if (p == null) continue;
+    InputEvent ev;
+    while ((ev = inputQueue.poll()) != null) {
+        Player p = players.get(ev.playerId);
+        if (p == null) continue;
 
-            Integer oldY = p.y;
-            Integer nx = p.x + ev.dx;
-            Integer ny = p.y + ev.dy;
+        Integer oldY = p.y;
+        Integer nx = p.x + ev.dx;
+        Integer ny = p.y + ev.dy;
 
-            if (nx < MIN_X) nx = MIN_X;
-            if (nx > MAX_X) nx = MAX_X;
-            if (ny < MIN_Y) ny = MIN_Y;
-            if (ny > MAX_Y) ny = MAX_Y;
+        // Límites del mapa
+        if (nx < MIN_X) nx = MIN_X;
+        if (nx > MAX_X) nx = MAX_X;
+        if (ny < MIN_Y) ny = MIN_Y;
+        if (ny > MAX_Y) ny = MAX_Y;
 
-            p.x = nx;
-            p.y = ny;
-            p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
-
-            // Si en este tick subió al menos 1 casilla, marcamos que "saltó"
-            if (ny > oldY) {
-                jumpedThisTick.add(ev.playerId);
-            }
+        // ==== COLISIÓN CON PAREDES (T y =) ====
+        Character dest = tileAt(nx, ny);
+        if (dest != null && (dest == 'T' || dest == '=')) {
+            // Choca con pared → NO se mueve
+            nx = p.x;
+            ny = p.y;
         }
+        // ======================================
+
+        p.x = nx;
+        p.y = ny;
+        p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
+
+        // Si en este tick subió al menos 1 casilla, marcamos que "saltó"
+        if (ny > oldY) {
+            jumpedThisTick.add(ev.playerId);
+        }
+    }
+
 
         // 1b) GRAVEDAD + agua
         sessions.forEach((pid, session) -> {
@@ -343,26 +354,30 @@ public class Server {
                 }
             }
 
-            // Si llegó al agua (por caída o movimiento directo) -> respawn
+            // Agua: cuenta como golpe → pierde vida y respawn / gameOver
             if (isWater(p.x, p.y)) {
-                p.x = session.spawnX;
-                p.y = session.spawnY;
-                p.gameOver = false;
+                handlePlayerHit(session, p);
             }
         });
+
 
         // 2) Simulación de enemigos + colisiones
         sessions.forEach((pid, session) -> {
             Player p = players.get(pid);
             if (p == null) return;
 
+            boolean hitThisTick = false;
+
             for (Enemy e : session.enemies) {
                 e.tick(MIN_Y, MAX_Y);
-                if (e.getX() == p.x && e.getY() == p.y) {
-                    p.gameOver = true;
+
+                if (!hitThisTick && e.getX() == p.x && e.getY() == p.y) {
+                    handlePlayerHit(session, p); // pierde vida y respawn / gameOver
+                    hitThisTick = true;
                 }
             }
 
+            // Frutas
             Iterator<Fruit> it = session.fruits.iterator();
             while (it.hasNext()) {
                 Fruit f = it.next();
@@ -372,34 +387,41 @@ public class Server {
                 }
             }
 
-            // Meta: si el tile actual es 'G', se considera que llegó a la jaula
+            // META por tile, no por goalX/goalY
             Character tileHere = tileAt(p.x, p.y);
             if (tileHere != null && tileHere == 'G') {
-                // Aumenta el nivel / ronda
+                // Subir nivel
                 p.round++;
 
-                // Respawn en el punto de aparición de la sesión
+                // Vida extra al llegar a meta
+                p.lives++;
+
+                // Respawn en spawn de la sesión
                 p.x = session.spawnX;
                 p.y = session.spawnY;
 
-                // Asegurarse de que sigue vivo
+                // Asegurar que no quede en gameOver
                 p.gameOver = false;
-
-                // (Más adelante aquí puedes subir dificultad de enemigos si quieres)
             }
-
         });
+
 
         // 3) Notificar estado a los clientes
         Integer seq = tickSeq.incrementAndGet();
         players.forEach((id, p) -> {
             String state = String.format(
                     Locale.ROOT,
-                    "STATE %d %d %d %d %d %b%n",
-                    seq, id, p.x, p.y, p.score, p.gameOver
+                    "STATE %d %d %d %d %d %d %d %b%n",
+                    seq, id,
+                    p.x, p.y,
+                    p.score,
+                    p.round,   // nivel
+                    p.lives,   // vidas
+                    p.gameOver
             );
             sendToPlayerAndSpectators(id, state);
         });
+
     }
 
 
@@ -430,27 +452,35 @@ public class Server {
      *     correspondiente de {@link Player}.
      */
     public void onJoin(ClientHandler c, String name) {
-        Integer id = nextId.getAndIncrement();
-        Player p = new Player(id, name);
+    Integer id = nextId.getAndIncrement();
+    Player p = new Player(id, name);
 
-        // Crear sesión de juego (aún no registrada globalmente)
-        GameSession session = new GameSession(id);
-        session.loadFromTemplates(templateEnemies, templateFruits);
+    // Crear sesión de juego (aún no registrada globalmente)
+    GameSession session = new GameSession(id);
+    session.loadFromTemplates(templateEnemies, templateFruits);
 
-        // 1) Notificar al cliente que se ha unido correctamente
-        c.sendLine("JOINED " + id + "\n");
+    // ==== POSICIONAR EN SPAWN ====
+    p.x = session.spawnX;
+    p.y = session.spawnY;
+    p.gameOver = false;   // por si acaso
+    // (p.round y p.lives ya los inicializaste en el constructor)
+    // ==============================
 
-        // 2) Enviar la descripción del mapa lógico antes de que empiecen los STATE
-        sendMapTo(c);
+    // 1) Notificar al cliente que se ha unido correctamente
+    c.sendLine("JOINED " + id + "\n");
 
-        // 3) Registrar al jugador en las estructuras globales
-        players.put(id, p);
-        byClient.put(c, id);
-        playerClients.add(c);
-        sessions.put(id, session);
+    // 2) Enviar la descripción del mapa lógico antes de que empiecen los STATE
+    sendMapTo(c);
 
-        System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
-    }
+    // 3) Registrar al jugador en las estructuras globales
+    players.put(id, p);
+    byClient.put(c, id);
+    playerClients.add(c);
+    sessions.put(id, session);
+
+    System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
+}
+
 
 
 
@@ -656,6 +686,31 @@ public class Server {
         sessions.remove(playerId);
         System.out.println("[JAVA] Fin de sesión -> id=" + playerId);
     }
+
+    /**
+     * Maneja cuando el jugador recibe daño (agua o enemigo).
+     * - Resta 1 vida.
+     * - Si aún le quedan vidas, respawnea en el spawn de la sesión.
+     * - Si se queda sin vidas, marca gameOver = true.
+     */
+    private void handlePlayerHit(GameSession session, Player p) {
+        if (p == null || session == null) return;
+
+        if (p.lives > 0) {
+            p.lives--;
+        }
+
+        if (p.lives <= 0) {
+            // Sin vidas → Game Over, se queda donde esté
+            p.gameOver = true;
+        } else {
+            // Aún tiene vidas → respawn en el spawn de la sesión
+            p.x = session.spawnX;
+            p.y = session.spawnY;
+            p.gameOver = false;
+        }
+    }
+
 
     /**
      * Envía una línea de texto al jugador y a todos los espectadores asociados.

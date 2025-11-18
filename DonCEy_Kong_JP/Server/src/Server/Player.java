@@ -15,6 +15,8 @@ public class Player {
     public final String name;
     /** Coordenadas actuales del jugador en el mapa (x, y). */
     public Integer x, y;
+    /** Vidas del jugador */
+    public Integer lives;
     /** Último número de secuencia de input reconocido/acknowledgeado por el servidor. */
     public Integer lastAckSeq;
     /** Puntaje acumulado por el jugador. */
@@ -39,6 +41,7 @@ public class Player {
         this.score = 0;
         this.round = 1;
         this.gameOver = false;
+        this.lives = 3;
     }
 }
 
