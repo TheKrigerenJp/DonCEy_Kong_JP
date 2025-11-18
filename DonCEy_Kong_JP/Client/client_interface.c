@@ -276,7 +276,8 @@ static int select_spectator_target(ClientState *state)
  *
  * @param state Puntero al estado actual del cliente (mapa + posición jugador).
  */
-static void draw_game_scene(const ClientState *state)
+static void
+draw_game_scene(const ClientState *state)
 {
     const int tileSize = 40;  /* tamaño en píxeles de cada tile */
 
@@ -328,10 +329,10 @@ static void draw_game_scene(const ClientState *state)
                       (Color){ 230, 30, 60, 255 });
     }
 
-    /* HUD sencillo */
+    /* HUD sencillo (abajo a la izquierda) */
     DrawText("DonCEy Kong Jr - Cliente", 10, 10, 20, RAYWHITE);
 
-    char hud[160];
+    char hud[128];
     snprintf(hud, sizeof(hud),
              "ID: %d  Nivel: %d  Vidas: %d  Score: %d  GameOver: %s",
              state->playerId,
@@ -340,8 +341,38 @@ static void draw_game_scene(const ClientState *state)
              state->score,
              state->gameOver ? "SI" : "NO");
     DrawText(hud, 10, WINDOW_HEIGHT - 30, 16, LIGHTGRAY);
+    /* === Overlay de GAME OVER === */
+    if (state->gameOver) {
+        /* Fondo oscuro semitransparente encima de todo */
+        DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
+                      (Color){ 0, 0, 0, 200 });
 
+        /* Mensaje grande */
+        const char *msg = "¡HAS PERDIDO!";
+        int titleFont   = 40;
+        int msgWidth    = MeasureText(msg, titleFont);
+        int msgX        = (WINDOW_WIDTH - msgWidth) / 2;
+        int msgY        = WINDOW_HEIGHT / 2 - 80;
+        DrawText(msg, msgX, msgY, titleFont, RAYWHITE);
+
+        /* Botón "Volver a jugar" */
+        const char *btnText   = "Volver a jugar";
+        int         btnFont   = 24;
+        int         btnWidth  = MeasureText(btnText, btnFont) + 40;
+        int         btnHeight = 50;
+        int         btnX      = (WINDOW_WIDTH - btnWidth) / 2;
+        int         btnY      = msgY + titleFont + 30;
+
+        DrawRectangle(btnX, btnY, btnWidth, btnHeight,
+                      (Color){ 50, 80, 130, 255 });
+        DrawRectangleLines(btnX, btnY, btnWidth, btnHeight, RAYWHITE);
+
+        int textX = btnX + (btnWidth  - MeasureText(btnText, btnFont)) / 2;
+        int textY = btnY + (btnHeight - btnFont) / 2;
+        DrawText(btnText, textX, textY, btnFont, RAYWHITE);
+    }
 }
+
 
 
 /* ============================
@@ -499,83 +530,121 @@ void run_player_mode(ClientState *state)
         char below   = '.';  /* tile justo debajo (y-1)     */
         char above   = '.';  /* tile justo arriba (y+1)     */
 
-        if (state->playerY >= 0 && state->playerY < state->map.height &&
-            state->playerX >= 0 && state->playerX < state->map.width) {
-            current = state->map.tiles[state->playerY][state->playerX];
-        }
-        if (state->playerY - 1 >= 0 &&
-            state->playerY - 1 < state->map.height &&
-            state->playerX >= 0 && state->playerX < state->map.width) {
-            below = state->map.tiles[state->playerY - 1][state->playerX];
-        }
-        if (state->playerY + 1 >= 0 &&
-            state->playerY + 1 < state->map.height &&
-            state->playerX >= 0 && state->playerX < state->map.width) {
-            above = state->map.tiles[state->playerY + 1][state->playerX];
-        }
+        if(!state->gameOver){
 
-        int solid_current =
-            (current == 'T' || current == '=' || current == '|' ||
-             current == 'S');
-        int solid_below =
-            (below   == 'T' || below   == '=' || below   == '|' ||
-             below   == 'S');
+            
+            if (state->playerY >= 0 && state->playerY < state->map.height &&
+                state->playerX >= 0 && state->playerX < state->map.width) {
+                current = state->map.tiles[state->playerY][state->playerX];
+            }
+            if (state->playerY - 1 >= 0 &&
+                state->playerY - 1 < state->map.height &&
+                state->playerX >= 0 && state->playerX < state->map.width) {
+                below = state->map.tiles[state->playerY - 1][state->playerX];
+            }
+            if (state->playerY + 1 >= 0 &&
+                state->playerY + 1 < state->map.height &&
+                state->playerX >= 0 && state->playerX < state->map.width) {
+                above = state->map.tiles[state->playerY + 1][state->playerX];
+            }
 
-        /* "Apoyado" = estoy en un tile sólido O tengo un sólido justo debajo
-           (caso de estar visualmente sobre la plataforma/liana). */
-        int supported = solid_current || solid_below;
+            int solid_current =
+                (current == 'T' || current == '=' || current == '|' ||
+                current == 'S');
+            int solid_below =
+                (below   == 'T' || below   == '=' || below   == '|' ||
+                below   == 'S');
 
-        /* Hay "techo" si justo arriba hay plataforma/tierra/spawn/meta */
-        int hasCeilingAbove =
-            (above == 'T' || above == '=' || above == 'S');
+            /* "Apoyado" = estoy en un tile sólido O tengo un sólido justo debajo
+            (caso de estar visualmente sobre la plataforma/liana). */
+            int supported = solid_current || solid_below;
 
-        int onLianaTile = (current == '|');  /* para trepar con ↑/↓ */
+            /* Hay "techo" si justo arriba hay plataforma/tierra/spawn/meta */
+            int hasCeilingAbove =
+                (above == 'T' || above == '=' || above == 'S');
 
-        /* === SALTO CON ESPACIO ===
-         * - SPACE solo       -> (dx = 0, dy = +1)
-         * - SPACE + LEFT     -> (dx = -2, dy = +1)
-         * - SPACE + RIGHT    -> (dx = +2, dy = +1)
-         * Solo si está apoyado y no hay techo encima.
-         */
-        if (IsKeyPressed(KEY_SPACE) && supported && !hasCeilingAbove) {
-            dy = +1;
+            int onLianaTile = (current == '|');  /* para trepar con ↑/↓ */
 
-            if (IsKeyDown(KEY_LEFT)) {
-                dx = -2;
-            } else if (IsKeyDown(KEY_RIGHT)) {
-                dx = +2;
+            /* === SALTO CON ESPACIO ===
+            * - SPACE solo       -> (dx = 0, dy = +1)
+            * - SPACE + LEFT     -> (dx = -2, dy = +1)
+            * - SPACE + RIGHT    -> (dx = +2, dy = +1)
+            * Solo si está apoyado y no hay techo encima.
+            */
+            if (IsKeyPressed(KEY_SPACE) && supported && !hasCeilingAbove) {
+                dy = +1;
+
+                if (IsKeyDown(KEY_LEFT)) {
+                    dx = -2;
+                } else if (IsKeyDown(KEY_RIGHT)) {
+                    dx = +2;
+                } else {
+                    dx = 0; /* salto vertical */
+                }
             } else {
-                dx = 0; /* salto vertical */
+                /* === Movimiento normal sin SPACE === */
+
+                /* Izquierda / derecha siempre permitidas en el piso o liana */
+                if (IsKeyDown(KEY_LEFT))  dx = -1;
+                if (IsKeyDown(KEY_RIGHT)) dx = +1;
+
+                /* ↑ / ↓ SOLO para trepar liana, y respetando techo */
+                if (onLianaTile && !hasCeilingAbove && IsKeyDown(KEY_UP)) {
+                    dy = +1;   /* subir por la liana */
+                } else if (onLianaTile && IsKeyDown(KEY_DOWN)) {
+                    dy = -1;   /* bajar por la liana */
+                }
             }
-        } else {
-            /* === Movimiento normal sin SPACE === */
 
-            /* Izquierda / derecha siempre permitidas en el piso o liana */
-            if (IsKeyDown(KEY_LEFT))  dx = -1;
-            if (IsKeyDown(KEY_RIGHT)) dx = +1;
-
-            /* ↑ / ↓ SOLO para trepar liana, y respetando techo */
-            if (onLianaTile && !hasCeilingAbove && IsKeyDown(KEY_UP)) {
-                dy = +1;   /* subir por la liana */
-            } else if (onLianaTile && IsKeyDown(KEY_DOWN)) {
-                dy = -1;   /* bajar por la liana */
+            /* Enviamos INPUT solo si realmente hay movimiento */
+            if (dx != 0 || dy != 0) {
+                seq++;
+                snprintf(cmd, sizeof(cmd), "INPUT %d %d %d\n", seq, dx, dy);
+                send_line(state->socket_fd, cmd);
             }
+
         }
-
-        /* Enviamos INPUT solo si realmente hay movimiento */
-        if (dx != 0 || dy != 0) {
-            seq++;
-            snprintf(cmd, sizeof(cmd), "INPUT %d %d %d\n", seq, dx, dy);
-            send_line(state->socket_fd, cmd);
-        }
-
-
-
 
         /* --- Dibujar escena --- */
         BeginDrawing();
             draw_game_scene(state);
         EndDrawing();
+
+        /* Si la partida terminó, revisar clic en el botón "Volver a jugar" */
+        if (state->gameOver) {
+            /* Debe usar la MISMA geometría que en draw_game_scene */
+
+            const char *msg = "¡HAS PERDIDO!";
+            int titleFont   = 40;
+            int msgWidth    = MeasureText(msg, titleFont);
+            int msgX        = (WINDOW_WIDTH - msgWidth) / 2;
+            int msgY        = WINDOW_HEIGHT / 2 - 80;
+
+            const char *btnText   = "Volver a jugar";
+            int         btnFont   = 24;
+            int         btnWidth  = MeasureText(btnText, btnFont) + 40;
+            int         btnHeight = 50;
+            int         btnX      = (WINDOW_WIDTH - btnWidth) / 2;
+            int         btnY      = msgY + titleFont + 30;
+
+            Rectangle btnRect = {
+                (float)btnX, (float)btnY,
+                (float)btnWidth, (float)btnHeight
+            };
+
+            Vector2 mouse = GetMousePosition();
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+                CheckCollisionPointRec(mouse, btnRect)) {
+
+                /* Salimos del bucle de juego.
+                 * En main() se cerrará el socket y se volverá al menú,
+                 * desde donde el usuario puede entrar otra vez como JUGADOR.
+                 */
+                break;
+            }
+        }
+
     }
 }
 
