@@ -106,7 +106,7 @@ static int receive_initial_map(ClientState *state)
 /* Tile sólido donde el jugador puede apoyarse / estar de pie */
 static int is_solid_tile_char(char t)
 {
-    return t == 'T' || t == '=' || t == '|' || t == 'S' || t == 'G';
+    return t == 'T' || t == '=' || t == '|' || t == 'S';
 }
 
 static int is_liana_char(char t)
@@ -510,10 +510,10 @@ void run_player_mode(ClientState *state)
 
         int solid_current =
             (current == 'T' || current == '=' || current == '|' ||
-             current == 'S' || current == 'G');
+             current == 'S');
         int solid_below =
             (below   == 'T' || below   == '=' || below   == '|' ||
-             below   == 'S' || below   == 'G');
+             below   == 'S');
 
         /* "Apoyado" = estoy en un tile sólido O tengo un sólido justo debajo
            (caso de estar visualmente sobre la plataforma/liana). */
@@ -521,7 +521,7 @@ void run_player_mode(ClientState *state)
 
         /* Hay "techo" si justo arriba hay plataforma/tierra/spawn/meta */
         int hasCeilingAbove =
-            (above == 'T' || above == '=' || above == 'S' || above == 'G');
+            (above == 'T' || above == '=' || above == 'S');
 
         int onLianaTile = (current == '|');  /* para trepar con ↑/↓ */
 

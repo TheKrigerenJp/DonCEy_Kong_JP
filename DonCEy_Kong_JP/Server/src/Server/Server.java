@@ -128,7 +128,7 @@ public class Server {
         "..|..|.....".toCharArray(), // y=6
         "..|==|.....".toCharArray(), // y=7
         ".....|..===".toCharArray(), // y=8
-        "...GG|.....".toCharArray(), // y=9
+        ".....|....G".toCharArray(), // y=9
         ".....|==...".toCharArray()  // y=10
         
     };
@@ -172,9 +172,20 @@ public class Server {
         return t == 'T'   // tierra que sale del agua
             || t == '='   // plataforma
             || t == '|'   // liana (colgado)
-            || t == 'S'   // spawn
-            || t == 'G';  // meta (jaula DK)
+            || t == 'S';   // spawn
     }
+
+     /**
+     * Tiles que bloquean al subir (techo).
+     * OJO: aquí NO incluimos 'G' para que la zona de ganar no bloquee el paso.
+     */
+    private static boolean isBlockingCeiling(Character t) {
+        return t == 'T'   // tierra
+            || t == '='   // plataforma
+            || t == 'S';  // spawn (por si hay uno encima)
+        // 'G' (meta) a propósito NO se incluye
+    }
+
 
     private static boolean isLiana(Character t) {
         return t != null && t == '|';
@@ -212,7 +223,7 @@ public class Server {
     }
 
     private static boolean isPlatformLike(Character t) {
-        return t != null && (t == '=' || t == 'T' || t == 'S' || t == 'G');
+        return t != null && (t == '=' || t == 'T' || t == 'S');
     }
 
     /**
@@ -292,14 +303,31 @@ public class Server {
      */
     private void tick() {
         // 1) inputs → posiciones (con límites) + ack
+        //    y detectamos quién se movió hacia arriba en este tick
+        Set<Integer> jumpedThisTick = new HashSet<>();
+
         InputEvent ev;
         while ((ev = inputQueue.poll()) != null) {
             Player p = players.get(ev.playerId);
             if (p == null) continue;
-            Integer nx = p.x + ev.dx, ny = p.y + ev.dy;
-            if (nx < MIN_X) nx = MIN_X; if (nx > MAX_X) nx = MAX_X;
-            if (ny < MIN_Y) ny = MIN_Y; if (ny > MAX_Y) ny = MAX_Y;
-            p.x = nx; p.y = ny; p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
+
+            Integer oldY = p.y;
+            Integer nx = p.x + ev.dx;
+            Integer ny = p.y + ev.dy;
+
+            if (nx < MIN_X) nx = MIN_X;
+            if (nx > MAX_X) nx = MAX_X;
+            if (ny < MIN_Y) ny = MIN_Y;
+            if (ny > MAX_Y) ny = MAX_Y;
+
+            p.x = nx;
+            p.y = ny;
+            p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
+
+            // Si en este tick subió al menos 1 casilla, marcamos que "saltó"
+            if (ny > oldY) {
+                jumpedThisTick.add(ev.playerId);
+            }
         }
 
         // 1b) GRAVEDAD + agua
@@ -307,12 +335,15 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-            // Gravedad: si NO hay nada sólido justo debajo, cae una casilla
-            if (p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
-                p.y -= 1;  // y-- = cae hacia abajo (tu convención actual)
+            // Si NO saltó hacia arriba en este tick, se le aplica gravedad normal
+            if (!jumpedThisTick.contains(pid)) {
+                // Gravedad: si NO hay nada sólido justo debajo, cae una casilla
+                if (p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
+                    p.y -= 1;  // y-- = cae hacia abajo
+                }
             }
 
-            // Si llegó al agua (ya sea por caída o por movimiento directo) -> respawn
+            // Si llegó al agua (por caída o movimiento directo) -> respawn
             if (isWater(p.x, p.y)) {
                 p.x = session.spawnX;
                 p.y = session.spawnY;
@@ -320,14 +351,11 @@ public class Server {
             }
         });
 
-
-
         // 2) Simulación de enemigos + colisiones
         sessions.forEach((pid, session) -> {
             Player p = players.get(pid);
             if (p == null) return;
 
-            // Enemigos (ejemplo simplificado, se puede usar enemySpeedSteps)
             for (Enemy e : session.enemies) {
                 e.tick(MIN_Y, MAX_Y);
                 if (e.getX() == p.x && e.getY() == p.y) {
@@ -335,7 +363,6 @@ public class Server {
                 }
             }
 
-            // Frutas (ejemplo simple: si colisiona, suma puntos y se quita la fruta)
             Iterator<Fruit> it = session.fruits.iterator();
             while (it.hasNext()) {
                 Fruit f = it.next();
@@ -345,10 +372,22 @@ public class Server {
                 }
             }
 
-            // Meta (si llega a la meta, se puede marcar como ronda superada)
-            if (p.x == session.goalX && p.y == session.goalY) {
+            // Meta: si el tile actual es 'G', se considera que llegó a la jaula
+            Character tileHere = tileAt(p.x, p.y);
+            if (tileHere != null && tileHere == 'G') {
+                // Aumenta el nivel / ronda
                 p.round++;
+
+                // Respawn en el punto de aparición de la sesión
+                p.x = session.spawnX;
+                p.y = session.spawnY;
+
+                // Asegurarse de que sigue vivo
+                p.gameOver = false;
+
+                // (Más adelante aquí puedes subir dificultad de enemigos si quieres)
             }
+
         });
 
         // 3) Notificar estado a los clientes
@@ -362,6 +401,7 @@ public class Server {
             sendToPlayerAndSpectators(id, state);
         });
     }
+
 
     /* ========= Eventos desde ClientHandler ========= */
 
