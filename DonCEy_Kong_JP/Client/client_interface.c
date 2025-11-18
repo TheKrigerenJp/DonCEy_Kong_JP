@@ -103,6 +103,19 @@ static int receive_initial_map(ClientState *state)
     return 0;
 }
 
+/* Tile sólido donde el jugador puede apoyarse / estar de pie */
+static int is_solid_tile_char(char t)
+{
+    return t == 'T' || t == '=' || t == '|' || t == 'S' || t == 'G';
+}
+
+static int is_liana_char(char t)
+{
+    return t == '|';
+}
+
+
+
 /**
  * Solicita al servidor la lista de jugadores activos y la almacena en state->players.
  *
@@ -470,19 +483,88 @@ void run_player_mode(ClientState *state)
         }
 
         /* --- Procesar input local y enviarlo al servidor --- */
-        int dx = 0, dy = 0;
+        
+                
+        int dx = 0;
+        int dy = 0;
 
-        if (IsKeyDown(KEY_LEFT))  dx = -1;
-        if (IsKeyDown(KEY_RIGHT)) dx = +1;
-        /* Servidor usa Y hacia arriba (p.y++ sube), por eso invertimos aquí */
-        if (IsKeyDown(KEY_DOWN))  dy = -1;
-        if (IsKeyDown(KEY_UP))    dy = +1;
+        /* === Leer tiles alrededor del jugador === */
+        char current = '.';  /* tile donde está el jugador */
+        char below   = '.';  /* tile justo debajo (y-1)     */
+        char above   = '.';  /* tile justo arriba (y+1)     */
 
+        if (state->playerY >= 0 && state->playerY < state->map.height &&
+            state->playerX >= 0 && state->playerX < state->map.width) {
+            current = state->map.tiles[state->playerY][state->playerX];
+        }
+        if (state->playerY - 1 >= 0 &&
+            state->playerY - 1 < state->map.height &&
+            state->playerX >= 0 && state->playerX < state->map.width) {
+            below = state->map.tiles[state->playerY - 1][state->playerX];
+        }
+        if (state->playerY + 1 >= 0 &&
+            state->playerY + 1 < state->map.height &&
+            state->playerX >= 0 && state->playerX < state->map.width) {
+            above = state->map.tiles[state->playerY + 1][state->playerX];
+        }
+
+        int solid_current =
+            (current == 'T' || current == '=' || current == '|' ||
+             current == 'S' || current == 'G');
+        int solid_below =
+            (below   == 'T' || below   == '=' || below   == '|' ||
+             below   == 'S' || below   == 'G');
+
+        /* "Apoyado" = estoy en un tile sólido O tengo un sólido justo debajo
+           (caso de estar visualmente sobre la plataforma/liana). */
+        int supported = solid_current || solid_below;
+
+        /* Hay "techo" si justo arriba hay plataforma/tierra/spawn/meta */
+        int hasCeilingAbove =
+            (above == 'T' || above == '=' || above == 'S' || above == 'G');
+
+        int onLianaTile = (current == '|');  /* para trepar con ↑/↓ */
+
+        /* === SALTO CON ESPACIO ===
+         * - SPACE solo       -> (dx = 0, dy = +1)
+         * - SPACE + LEFT     -> (dx = -2, dy = +1)
+         * - SPACE + RIGHT    -> (dx = +2, dy = +1)
+         * Solo si está apoyado y no hay techo encima.
+         */
+        if (IsKeyPressed(KEY_SPACE) && supported && !hasCeilingAbove) {
+            dy = +1;
+
+            if (IsKeyDown(KEY_LEFT)) {
+                dx = -2;
+            } else if (IsKeyDown(KEY_RIGHT)) {
+                dx = +2;
+            } else {
+                dx = 0; /* salto vertical */
+            }
+        } else {
+            /* === Movimiento normal sin SPACE === */
+
+            /* Izquierda / derecha siempre permitidas en el piso o liana */
+            if (IsKeyDown(KEY_LEFT))  dx = -1;
+            if (IsKeyDown(KEY_RIGHT)) dx = +1;
+
+            /* ↑ / ↓ SOLO para trepar liana, y respetando techo */
+            if (onLianaTile && !hasCeilingAbove && IsKeyDown(KEY_UP)) {
+                dy = +1;   /* subir por la liana */
+            } else if (onLianaTile && IsKeyDown(KEY_DOWN)) {
+                dy = -1;   /* bajar por la liana */
+            }
+        }
+
+        /* Enviamos INPUT solo si realmente hay movimiento */
         if (dx != 0 || dy != 0) {
             seq++;
             snprintf(cmd, sizeof(cmd), "INPUT %d %d %d\n", seq, dx, dy);
             send_line(state->socket_fd, cmd);
         }
+
+
+
 
         /* --- Dibujar escena --- */
         BeginDrawing();

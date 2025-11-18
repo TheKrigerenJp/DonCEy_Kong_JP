@@ -126,10 +126,11 @@ public class Server {
         "..|..|.....".toCharArray(), // y=4
         "..|..|..===".toCharArray(), // y=5
         "..|..|.....".toCharArray(), // y=6
-        "..===|.....".toCharArray(), // y=7
+        "..|==|.....".toCharArray(), // y=7
         ".....|..===".toCharArray(), // y=8
-        ".....|.....".toCharArray(), // y=9
-        "..GGG===...".toCharArray()  // y=10
+        "...GG|.....".toCharArray(), // y=9
+        ".....|==...".toCharArray()  // y=10
+        
     };
 
 
@@ -174,6 +175,63 @@ public class Server {
             || t == 'S'   // spawn
             || t == 'G';  // meta (jaula DK)
     }
+
+    private static boolean isLiana(Character t) {
+        return t != null && t == '|';
+    }
+
+     /**
+     * Devuelve true si el jugador tiene un bloque "sólido" justo debajo
+     * (plataforma, tierra, liana, spawn o meta).
+     * Ojo: el jugador está en (x, y) pero el bloque de apoyo está en (x, y-1).
+     */
+    private static boolean hasSolidBelow(Integer x, Integer y) {
+        if (y <= MIN_Y) return false; // no hay nada más abajo
+        Character below = tileAt(x, y - 1);
+        return isSolidTile(below);
+    }
+
+    /**
+     * Se considera "apoyado" cuando:
+     *  - Está colgado de una liana (tile actual = '|'), o
+     *  - Tiene un bloque sólido justo debajo.
+     *
+     * Esto cubre:
+     *  - De pie sobre plataformas (jugador en '.', plataforma en y-1)
+     *  - Colgado de lianas (jugador en '|')
+     */
+    private static boolean isSupported(Integer x, Integer y) {
+        Character here = tileAt(x, y);
+        // Si estoy parado en un tile sólido, ya con eso basta
+        if (isSolidTile(here)) {
+            return true;
+        }
+
+        // O si tengo un sólido justo debajo (estoy 1 casilla por encima de la plataforma)
+        return hasSolidBelow(x, y);
+    }
+
+    private static boolean isPlatformLike(Character t) {
+        return t != null && (t == '=' || t == 'T' || t == 'S' || t == 'G');
+    }
+
+    /**
+     * Indica si el jugador puede moverse una casilla hacia arriba desde (x,y),
+     * sin atravesar un techo.
+     */
+    private static boolean canMoveUpFrom(Integer x, Integer y) {
+        Character here  = tileAt(x, y);
+        Character above = tileAt(x, y + 1);
+
+        // Techo: cualquier tile sólido arriba que NO sea liana
+        if (isSolidTile(above) && !isLiana(above)) {
+            return false;
+        }
+
+        // Solo se puede subir si estás en liana o en una superficie sólida
+        return isLiana(here) || isPlatformLike(here);
+    }
+
 
     /* ========= Abstract Factory / plantillas ========= */
     /** Fábrica abstracta de elementos del juego (enemigos y frutas). */
@@ -249,12 +307,9 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-            // Gravedad: si no hay soporte debajo, cae una casilla
-            if (p.y > MIN_Y) {
-                Character below = tileAt(p.x, p.y - 1);
-                if (!isSolidTile(below)) {
-                    p.y -= 1;
-                }
+            // Gravedad: si NO hay nada sólido justo debajo, cae una casilla
+            if (p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
+                p.y -= 1;  // y-- = cae hacia abajo (tu convención actual)
             }
 
             // Si llegó al agua (ya sea por caída o por movimiento directo) -> respawn
@@ -264,6 +319,8 @@ public class Server {
                 p.gameOver = false;
             }
         });
+
+
 
         // 2) Simulación de enemigos + colisiones
         sessions.forEach((pid, session) -> {
@@ -367,12 +424,51 @@ public class Server {
      */
     public void onInput(ClientHandler c, Integer seq, Integer dx, Integer dy) {
         Integer id = byClient.get(c);
-        if (id == null) { c.sendLine("ERR NOT_PLAYER\n"); return; }
+        if (id == null) {
+            c.sendLine("ERR NOT_PLAYER\n");
+            return;
+        }
 
-        // rate limit si ya lo tenías...
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) { c.sendLine("ERR STEP_TOO_BIG\n"); return; }
+        Player p = players.get(id);
+        if (p == null) {
+            return;
+        }
+
+        // Permitimos movimientos de -1,0,+1 y saltos diagonales con dx = ±2
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 1) {
+            c.sendLine("ERR STEP_TOO_BIG\n");
+            return;
+        }
+
+        // Saltos diagonales: si dx = ±2 pero no sube, lo anulamos
+        if (Math.abs(dx) == 2 && dy != 1) {
+            dx = 0;
+        }
+
+        if (dy > 0) {
+            // 1) Solo puede subir si está apoyado (sobre spawn, plataforma, liana, etc.)
+            if (!isSupported(p.x, p.y)) {
+                dx = 0;
+                dy = 0;
+            } else {
+                // 2) No puede haber un “techo” sólido justo encima
+                Character above = tileAt(p.x, p.y + 1);
+                if (isSolidTile(above) && !isLiana(above)) {
+                    dx = 0;
+                    dy = 0;
+                }
+            }
+        }
+
+        if (dx == 0 && dy == 0) {
+            return;
+        }
+
         inputQueue.offer(new InputEvent(id, seq, dx, dy));
-    }
+    }   
+
+
+
 
     /**
      * Maneja la solicitud de un cliente para unirse como espectador de un jugador.
