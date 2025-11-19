@@ -2,7 +2,7 @@ package Server;
 
 //import java.util.Iterator; NO SE ESTA USANDO
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
 
 import Server.entities.Enemy;
 import Server.entities.Fruit;
@@ -27,9 +27,9 @@ public class GameSession {
     /** Coordenadas de la meta (goal) para el jugador. */
     public Integer goalX, goalY;
     /** Lista de enemigos activos en la sesión de este jugador. */
-    public final CopyOnWriteArrayList<Enemy> enemies = new CopyOnWriteArrayList<>();
+    public final List<Enemy> enemies = new ArrayList<>();
     /** Lista de frutas activas en la sesión de este jugador. */
-    public final CopyOnWriteArrayList<Fruit> fruits  = new CopyOnWriteArrayList<>();
+    public final List<Fruit> fruits  = new ArrayList<>();
 
     /**
      * “Velocidad lógica” de enemigos para este jugador (pasos por tick).

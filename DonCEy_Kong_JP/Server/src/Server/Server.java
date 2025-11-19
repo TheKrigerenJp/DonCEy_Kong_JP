@@ -366,44 +366,65 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-            boolean hitThisTick = false;
+            try {
+                boolean hitThisTick = false;
 
-            for (Enemy e : session.enemies) {
-                e.tick(MIN_Y, MAX_Y);
+                // ===== ENEMIGOS =====
+                for (Enemy e : session.enemies) {
+                    e.tick(MIN_Y, MAX_Y);
 
-                if (!hitThisTick && e.getX() == p.x && e.getY() == p.y) {
-                    handlePlayerHit(session, p); // pierde vida y respawn / gameOver
-                    hitThisTick = true;
+                    if (!hitThisTick && e.getX() == p.x && e.getY() == p.y) {
+                        handlePlayerHit(session, p); // pierde vida y respawn / gameOver
+                        hitThisTick = true;
+                    }
                 }
-            }
 
-            // Frutas
-            Iterator<Fruit> it = session.fruits.iterator();
-            while (it.hasNext()) {
-                Fruit f = it.next();
-                if (f.getX() == p.x && f.getY() == p.y) {
-                    p.score += f.getPoints();
-                    it.remove();
+                // ===== FRUTAS =====
+                boolean fruitsChanged = false;
+
+                if (session.fruits != null) {
+                    Iterator<Fruit> it = session.fruits.iterator();
+                    while (it.hasNext()) {
+                        Fruit f = it.next();
+                        if (f == null) continue;
+
+                        if (f.getX() == p.x && f.getY() == p.y) {
+                            // Por seguridad si usas wrappers Integer:
+                            Integer pts = f.getPoints();
+                            if (pts == null) pts = 0;
+
+                            p.score = (p.score == null ? 0 : p.score) + pts;
+
+                            it.remove();
+                            fruitsChanged = true;
+
+                            // si solo hay 1 fruta por casilla, puedes salir aquí:
+                            // break;
+                        }
+                    }
                 }
-            }
 
-            // META por tile, no por goalX/goalY
-            Character tileHere = tileAt(p.x, p.y);
-            if (tileHere != null && tileHere == 'G') {
-                // Subir nivel
-                p.round++;
+                if (fruitsChanged) {
+                    sendFruitsForPlayer(pid, session);
+                }
 
-                // Vida extra al llegar a meta
-                p.lives++;
+                // ===== META (G) =====
+                Character tileHere = tileAt(p.x, p.y);
+                if (tileHere != null && tileHere == 'G') {
+                    p.round++;
+                    p.lives++;
+                    p.x = session.spawnX;
+                    p.y = session.spawnY;
+                    p.gameOver = false;
+                    resetFruitsFromTemplates(pid, session);
+                }
 
-                // Respawn en spawn de la sesión
-                p.x = session.spawnX;
-                p.y = session.spawnY;
-
-                // Asegurar que no quede en gameOver
-                p.gameOver = false;
+            } catch (Exception ex) {
+                System.out.println("[JAVA] ERROR en tick() al procesar enemigos/frutas para jugador " + pid);
+                ex.printStackTrace();
             }
         });
+
 
 
         // 3) Notificar estado a los clientes
@@ -421,6 +442,7 @@ public class Server {
             );
             sendToPlayerAndSpectators(id, state);
         });
+
 
     }
 
@@ -477,6 +499,7 @@ public class Server {
     byClient.put(c, id);
     playerClients.add(c);
     sessions.put(id, session);
+    sendFruitsForPlayer(id, session);
 
     System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
 }
@@ -686,6 +709,27 @@ public class Server {
         sessions.remove(playerId);
         System.out.println("[JAVA] Fin de sesión -> id=" + playerId);
     }
+
+    /**
+     * Restaura las frutas de la sesión a partir de las plantillas globales.
+     * Se usa cuando el jugador llega a la meta para que reaparezcan en
+     * las mismas coordenadas donde el administrador las configuró.
+     */
+        private void resetFruitsFromTemplates(Integer playerId, GameSession session) {
+        if (session == null) return;
+
+        session.fruits.clear();
+        for (Fruit tf : templateFruits) {
+            session.fruits.add(
+                factory.createFruit(tf.getX(), tf.getY(), tf.getPoints())
+            );
+        }
+
+        // Enviar al jugador la nueva lista de frutas
+        sendFruitsForPlayer(playerId, session);
+    }
+
+
 
     /**
      * Maneja cuando el jugador recibe daño (agua o enemigo).
@@ -953,6 +997,14 @@ public class Server {
                     Integer pts = Integer.parseInt(t[5]);
                     Integer playerId = (t.length >= 7) ? Integer.parseInt(t[6]) : null;
 
+                    // Validar que la fruta se coloca en una casilla "pisable"
+                    Character tile = tileAt(l, y);
+                    if (tile != '.' && tile != '|' && tile != 'S' && tile != 'G') {
+                        System.out.println("[ADMIN] No se puede crear fruta en un tile bloqueante (agua, tierra o plataforma).");
+                        return;
+                    }
+
+
                     if (playerId == null) {
                         templateFruits.add(factory.createFruit(l, y, pts));
                         System.out.println("[ADMIN] FRUIT +" + l + "," + y + " pts=" + pts + " (plantilla)");
@@ -1034,6 +1086,8 @@ public class Server {
         session.fruits.add(fruit);
         System.out.println("[ADMIN] FRUIT +" + l + "," + y + " pts=" + pts +
                 " → jugador " + playerId);
+        
+        sendFruitsForPlayer(playerId, session);
     }
 
     /**
@@ -1052,7 +1106,29 @@ public class Server {
 
         session.fruits.removeIf(f -> f.getX() == l && f.getY() == y);
         System.out.println("[ADMIN] FRUIT -" + l + "," + y + " → jugador " + playerId);
+
+        sendFruitsForPlayer(playerId, session);
     }
+
+    /**
+     * Envía al jugador (y sus espectadores) la lista completa de frutas
+     * de su sesión actual.
+     */
+    private void sendFruitsForPlayer(Integer playerId, GameSession session) {
+        if (session == null) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format(Locale.ROOT, "FRUITS_BEGIN %d%n", playerId));
+        for (Fruit f : session.fruits) {
+            sb.append(String.format(Locale.ROOT,
+                    "FRUIT %d %d %d%n",
+                    f.getX(), f.getY(), f.getPoints()));
+        }
+        sb.append(String.format(Locale.ROOT, "FRUITS_END %d%n", playerId));
+
+        sendToPlayerAndSpectators(playerId, sb.toString());
+    }
+
 
 
     /**

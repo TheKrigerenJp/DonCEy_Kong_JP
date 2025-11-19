@@ -316,6 +316,20 @@ draw_game_scene(const ClientState *state)
         }
     }
 
+    /* ===== Dibujar frutas ===== */
+    for (int i = 0; i < state->numFruits; i++) {
+        int fx = state->fruits[i].x;
+        int fy = state->fruits[i].y;
+
+        int drawX = offsetX + fx * tileSize;
+        int drawY = offsetY + (state->map.height - 1 - fy) * tileSize;
+
+        /* Cuadrado más pequeño, color llamativo (ej. magenta) */
+        DrawRectangle(drawX + 8, drawY + 8,
+                      tileSize - 16, tileSize - 16,
+                      (Color){ 230, 0, 230, 255 });
+    }
+
     /* Dibujar jugador (si tenemos posición válida) */
     if (state->playerId != 0) {
         int px = state->playerX;
@@ -483,7 +497,12 @@ void run_player_mode(ClientState *state)
     state->score    = 0;
     state->gameOver = 0;
 
+    state->numFruits = 0;
+    int inFruitBlock = 0;
+
     int seq = 0;  /* número de secuencia para INPUT */
+    
+    
 
     /* 4) Bucle de juego */
     while (!WindowShouldClose()) {
@@ -493,29 +512,62 @@ void run_player_mode(ClientState *state)
             break;
         }
 
-        /* --- Leer estado del servidor --- */
+         /* --- Leer estado del servidor --- */
         int len = recv_line(state->socket_fd, line, sizeof(line));
         if (len <= 0) {
             break; /* desconexión o error */
         }
 
-        /* Esperamos líneas del tipo:
-         * STATE <seq> <id> <x> <y> <score> <true/false>
-         */
         char tag[16];
-        char gameOverStr[8];
-        int  s, pid, x, y, score, level, lives;
-        if (sscanf(line, "%15s %d %d %d %d %d %d %d %7s",
-                   tag, &s, &pid, &x, &y, &score, &level, &lives, gameOverStr) == 9 &&
-            strcmp(tag, "STATE") == 0) {
+        if (sscanf(line, "%15s", tag) != 1) {
+            continue;
+        }
 
-            if (pid == state->playerId) {
-                state->playerX  = x;
-                state->playerY  = y;
-                state->score    = score;
-                state->level    = level;
-                state->lives    = lives;
-                state->gameOver = (strcmp(gameOverStr, "true") == 0);
+        /* ====== STATE: posición, score, nivel, vidas, gameOver ====== */
+        if (strcmp(tag, "STATE") == 0) {
+            int  s, pid, x, y, score, level, lives;
+            char gameOverStr[8];
+
+            if (sscanf(line, "%15s %d %d %d %d %d %d %d %7s",
+                       tag, &s, &pid, &x, &y, &score, &level, &lives, gameOverStr) == 9) {
+
+                if (pid == state->playerId) {
+                    state->playerX  = x;
+                    state->playerY  = y;
+                    state->score    = score;
+                    state->level    = level;
+                    state->lives    = lives;
+                    state->gameOver = (strcmp(gameOverStr, "true") == 0);
+                }
+            }
+        }
+        /* ====== FRUITS_BEGIN: comienza lista de frutas ====== */
+        else if (strcmp(tag, "FRUITS_BEGIN") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inFruitBlock      = 1;
+                state->numFruits  = 0;
+            }
+        }
+        /* ====== FRUIT x y pts ====== */
+        else if (strcmp(tag, "FRUIT") == 0) {
+            if (inFruitBlock) {
+                int fx, fy, pts;
+                if (sscanf(line, "%*s %d %d %d", &fx, &fy, &pts) == 3) {
+                    if (state->numFruits < MAX_FRUITS) {
+                        FruitInfo *f = &state->fruits[state->numFruits++];
+                        f->x      = fx;
+                        f->y      = fy;
+                        f->points = pts;
+                    }
+                }
+            }
+        }
+        /* ====== FRUITS_END ====== */
+        else if (strcmp(tag, "FRUITS_END") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inFruitBlock = 0;
             }
         }
 

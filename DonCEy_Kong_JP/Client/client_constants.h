@@ -34,6 +34,15 @@ typedef struct {
     char tiles[MAX_MAP_HEIGHT][MAX_MAP_WIDTH + 1]; /* +1 por seguridad con '\0' */
 } GameMap;
 
+#define MAX_FRUITS  32
+
+typedef struct {
+    int x;
+    int y;
+    int points;
+} FruitInfo;
+
+
 
 #define MAX_PLAYERS 16
 
@@ -118,6 +127,9 @@ typedef struct {
 
     int        numPlayers;
     PlayerInfo players[MAX_PLAYERS];
+
+    int numFruits;
+    FruitInfo fruits[MAX_FRUITS];
 
 } ClientState;
 
