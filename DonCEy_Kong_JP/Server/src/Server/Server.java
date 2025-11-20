@@ -110,26 +110,31 @@ public class Server {
 
     /* ========= Mapa / constantes ========= */
     public static final Integer MIN_X = 0;
-    public static final Integer MAX_X = 10;
+    public static final Integer MAX_X = 13;
     public static final Integer MIN_Y = 0;
-    public static final Integer MAX_Y = 10;
+    public static final Integer MAX_Y = 13;
 
     /**
      * Representación del mapa del juego como una matriz de caracteres.
      * Cada fila representa una coordenada Y y cada columna una coordenada X.
      */
     private static final char[][] MAP = {
-        "TTTWWTWTWWW".toCharArray(), // y=0
-        "S==..=T..==".toCharArray(), // y=1
-        "..|.......=".toCharArray(), // y=2
-        "..|..===..=".toCharArray(), // y=3
-        "..|..|.....".toCharArray(), // y=4
-        "..|..|..===".toCharArray(), // y=5
-        "..|..|.....".toCharArray(), // y=6
-        "..|==|.....".toCharArray(), // y=7
-        ".....|.====".toCharArray(), // y=8
-        ".....|....G".toCharArray(), // y=9
-        ".....|==...".toCharArray()  // y=10
+        "TTTWWTWTWWW....".toCharArray(), // y=0
+        "S==..=T..==....".toCharArray(), // y=1
+        ".....T=...=....".toCharArray(), // y=2
+        "..|.......=....".toCharArray(), // y=3
+        "..|..|.........".toCharArray(), // y=4
+        "..|..|..===....".toCharArray(), // y=5
+        "..|..|.........".toCharArray(), // y=6
+        "..|==|.........".toCharArray(), // y=7
+        ".....|.====....".toCharArray(), // y=8
+        "...............".toCharArray(), // y=9
+        "...............".toCharArray(), // y=10
+        "...............".toCharArray(), // y=11
+        "======.........".toCharArray(), // y=12
+        "G..............".toCharArray(), // y=13
+        "...............".toCharArray()  // y=14
+        
         
     };
 
@@ -584,7 +589,7 @@ public class Server {
         }
 
         // Permitimos movimientos de -1,0,+1 y saltos diagonales con dx = ±2
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 1) {
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 1) {
             c.sendLine("ERR STEP_TOO_BIG\n");
             return;
         }

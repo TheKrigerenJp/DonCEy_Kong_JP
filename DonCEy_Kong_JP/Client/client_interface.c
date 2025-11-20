@@ -694,9 +694,9 @@ void run_player_mode(ClientState *state)
                 dy = +1;
 
                 if (IsKeyDown(KEY_LEFT)) {
-                    dx = -2;
+                    dx = -3;
                 } else if (IsKeyDown(KEY_RIGHT)) {
-                    dx = +2;
+                    dx = +3;
                 } else {
                     dx = 0; /* salto vertical */
                 }
