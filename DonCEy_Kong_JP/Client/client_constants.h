@@ -42,6 +42,15 @@ typedef struct {
     int points;
 } FruitInfo;
 
+#define MAX_ENEMIES 32
+
+typedef struct {
+    int x;
+    int y;
+    int type; /* 1 = RED, 2 = BLUE, 0 = desconocido/genérico */
+} EnemyInfo;
+
+
 
 
 #define MAX_PLAYERS 16
@@ -130,6 +139,9 @@ typedef struct {
 
     int numFruits;
     FruitInfo fruits[MAX_FRUITS];
+
+    int numEnemies;
+    EnemyInfo enemies[MAX_ENEMIES];
 
 } ClientState;
 

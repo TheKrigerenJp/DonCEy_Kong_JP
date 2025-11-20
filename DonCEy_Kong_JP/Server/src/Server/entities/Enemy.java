@@ -39,4 +39,13 @@ public abstract class Enemy {
      *         {@code "RED"} o {@code "BLUE"}.
      */
     public abstract String getType();
+
+
+    /**
+     * Por defecto todos los enemigos están activos.
+     * BlueCroc lo sobrescribirá para poder "desaparecer".
+     */
+    public Boolean isActive() {
+        return true;
+    }
 }

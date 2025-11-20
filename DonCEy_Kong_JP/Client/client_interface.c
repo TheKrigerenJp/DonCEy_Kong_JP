@@ -299,7 +299,7 @@ draw_game_scene(const ClientState *state)
 
             switch (t) {
                 case 'W': c = (Color){ 30, 60, 200, 255 }; break;  /* Agua */
-                case 'T': c = (Color){ 120, 80, 40, 255 }; break;  /* Tierra */
+                case 'T': c = (Color){ 56, 40, 18, 255 }; break;  /* Tierra */
                 case '=': c = (Color){ 100, 100, 100, 255 }; break;/* Plataforma */
                 case '|': c = (Color){ 50, 150, 60, 255 }; break;  /* Liana */
                 case 'S': c = (Color){ 200, 200, 50, 255 }; break; /* Spawn */
@@ -315,6 +315,30 @@ draw_game_scene(const ClientState *state)
             DrawRectangleLines(drawX, drawY, tileSize, tileSize, (Color){ 10, 10, 10, 255 });
         }
     }
+
+    /* ===== Dibujar enemigos (cocodrilos) ===== */
+    for (int i = 0; i < state->numEnemies; i++) {
+        int ex = state->enemies[i].x;
+        int ey = state->enemies[i].y;
+
+        int drawX = offsetX + ex * tileSize;
+        int drawY = offsetY + (state->map.height - 1 - ey) * tileSize;
+
+        Color col;
+        if (state->enemies[i].type == 1) {          /* RED */
+            col = (Color){ 220, 50, 50, 255 };
+        } else if (state->enemies[i].type == 2) {   /* BLUE */
+            col = (Color){ 60, 80, 220, 255 };
+        } else {
+            col = (Color){ 180, 180, 180, 255 };    /* genérico */
+        }
+
+        /* Rectángulo más “alargado” para sugerir un cocodrilo horizontal */
+        DrawRectangle(drawX + 4, drawY + 10,
+                      tileSize - 8, tileSize - 20,
+                      col);
+    }
+
 
     /* ===== Dibujar frutas ===== */
     for (int i = 0; i < state->numFruits; i++) {
@@ -340,7 +364,7 @@ draw_game_scene(const ClientState *state)
 
         DrawRectangle(drawX + 5, drawY + 5,
                       tileSize - 10, tileSize - 10,
-                      (Color){ 230, 30, 60, 255 });
+                      (Color){ 110, 70, 20, 255 });
     }
 
     /* HUD sencillo (abajo a la izquierda) */
@@ -498,7 +522,10 @@ void run_player_mode(ClientState *state)
     state->gameOver = 0;
 
     state->numFruits = 0;
+    state->numEnemies = 0;
+
     int inFruitBlock = 0;
+    int inEnemyBlock = 0;
 
     int seq = 0;  /* número de secuencia para INPUT */
     
@@ -570,6 +597,46 @@ void run_player_mode(ClientState *state)
                 inFruitBlock = 0;
             }
         }
+
+        /* ====== ENEMIES_BEGIN: comienza lista de enemigos ====== */
+        else if (strcmp(tag, "ENEMIES_BEGIN") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inEnemyBlock      = 1;
+                state->numEnemies = 0;
+            }
+        }
+        /* ====== ENEMY <type> <x> <y> ====== */
+        else if (strcmp(tag, "ENEMY") == 0) {
+            if (inEnemyBlock) {
+                char typeStr[16];
+                int  ex, ey;
+
+                if (sscanf(line, "%*s %15s %d %d", typeStr, &ex, &ey) == 3) {
+                    if (state->numEnemies < MAX_ENEMIES) {
+                        EnemyInfo *e = &state->enemies[state->numEnemies++];
+                        e->x = ex;
+                        e->y = ey;
+
+                        if (strcmp(typeStr, "RED") == 0) {
+                            e->type = 1;
+                        } else if (strcmp(typeStr, "BLUE") == 0) {
+                            e->type = 2;
+                        } else {
+                            e->type = 0;
+                        }
+                    }
+                }
+            }
+        }
+        /* ====== ENEMIES_END ====== */
+        else if (strcmp(tag, "ENEMIES_END") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inEnemyBlock = 0;
+            }
+        }
+
 
         /* --- Procesar input local y enviarlo al servidor --- */
         

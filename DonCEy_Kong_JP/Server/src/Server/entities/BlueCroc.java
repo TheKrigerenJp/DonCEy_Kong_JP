@@ -12,6 +12,13 @@ public class BlueCroc extends Enemy {
     private final Integer liana;
     /** Posición vertical actual del cocodrilo. */
     private Integer y;
+    /** Posición horizontal actual del cocodrilo. */
+    private Integer x;
+
+    private Boolean active = true;
+
+    private Integer tickCounter = 0;
+    private static final Integer SPEED_DIVIDER = 3;
 
     /**
      * Crea un nuevo cocodrilo azul.
@@ -22,6 +29,7 @@ public class BlueCroc extends Enemy {
     public BlueCroc(Integer liana, Integer y) {
         this.liana = liana;
         this.y = y;
+        this.x = x;
     }
 
     /**
@@ -33,10 +41,19 @@ public class BlueCroc extends Enemy {
      */
     @Override
     public void tick(Integer minY, Integer maxY) {
-        y++;
-        if (y > maxY) {
-            // “Cae” y reaparece arriba.
-            y = minY;
+        if (!active) return;
+
+        tickCounter++;
+        if (tickCounter % SPEED_DIVIDER != 0) {
+            return;  // quieto este tick → se ve más lento
+        }
+
+        if (y > minY) {
+            // Baja una casilla hacia minY (que en tu mapa es y=0)
+            y = y - 1;
+        } else {
+            // Ya llegó o pasó minY → desaparece
+            active = false;
         }
     }
 
@@ -58,6 +75,10 @@ public class BlueCroc extends Enemy {
     @Override
     public Integer getY() {
         return y;
+    }
+
+    public Boolean isActive(){
+        return active;
     }
 
     /**

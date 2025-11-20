@@ -1,5 +1,7 @@
 package Server.entities;
 
+import Server.Server;
+
 /**
  * Representa un cocodrilo rojo en el juego.
  * <p>
@@ -12,8 +14,14 @@ public class RedCroc extends Enemy {
     private final Integer liana;
     /** Posición vertical actual del cocodrilo. */
     private Integer y;
+    /** Posición horizontal actual del cocodrilo */
+    private Integer x;
     /** Dirección de movimiento: +1 hacia abajo, -1 hacia arriba. */
     private Integer dir = +1;
+    /** Contador de ticks para bajar la velocidad */
+    private Integer tickCounter = 0;
+    /** Se mueve solo cada 3 ticks -> más lento. */
+    private static final Integer SPEED_DIVIDER = 3;
 
     /**
      * Crea un nuevo cocodrilo rojo.
@@ -24,6 +32,8 @@ public class RedCroc extends Enemy {
     public RedCroc(Integer liana, Integer y) {
         this.liana = liana;
         this.y = y;
+        this.x = x;
+        System.out.println("[ENEMY] RedCroc creado fuera de liana en " + x + "," + y);
     }
 
     /**
@@ -38,15 +48,27 @@ public class RedCroc extends Enemy {
      */
     @Override
     public void tick(Integer minY, Integer maxY) {
-        y += dir;
-        if (y <= minY) {
-            y = minY;
-            dir = +1;
+        tickCounter++;
+        // Solo se mueve cuando tickCounter es múltiplo de SPEED_DIVIDER
+        if (tickCounter % SPEED_DIVIDER != 0) {
+            return;
         }
-        if (y >= maxY) {
-            y = maxY;
-            dir = -1;
+
+        Integer nextY = y + dir;
+
+        // Si se sale del mapa o intenta salirse de la liana, invertimos dirección
+        if (nextY < minY || nextY > maxY || !Server.isLianaAt(x, nextY)) {
+            dir = -dir;
+            nextY = y + dir;
+
+            // Si aún así no hay casilla válida, no se mueve este tick
+            if (nextY < minY || nextY > maxY || !Server.isLianaAt(x, nextY)) {
+                return;
+            }
         }
+
+        // En este punto, sabemos que (x, nextY) sigue siendo una liana
+        y = nextY;
     }
 
     /**

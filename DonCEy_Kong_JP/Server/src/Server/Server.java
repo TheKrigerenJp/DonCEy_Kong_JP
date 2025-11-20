@@ -191,6 +191,14 @@ public class Server {
         return t != null && t == '|';
     }
 
+    /**
+     * Indica si en la posición (x, y) del mapa hay una liana ('|').
+     */
+    public static boolean isLianaAt(Integer x, Integer y) {
+        return tileAt(x, y) == '|';
+    }
+
+
      /**
      * Devuelve true si el jugador tiene un bloque "sólido" justo debajo
      * (plataforma, tierra, liana, spawn o meta).
@@ -366,18 +374,33 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-            try {
-                boolean hitThisTick = false;
+                Boolean hitThisTick = false;
 
-                // ===== ENEMIGOS =====
-                for (Enemy e : session.enemies) {
+                List<Enemy> toRemove = new ArrayList<>();
+                Boolean enemiesChangedThisTick = false;
+
+                for (Enemy e : session.enemies){
+                    Integer oldEx = e.getX();
+                    Integer oldEy = e.getY();
+
                     e.tick(MIN_Y, MAX_Y);
+
+                    if (!e.isActive()){
+                        toRemove.add(e);
+                        enemiesChangedThisTick = true;
+                        continue;
+                    }
+
+                    if (e.getX() != oldEx || e.getY() != oldEy) {
+                    enemiesChangedThisTick = true;
+                    }
 
                     if (!hitThisTick && e.getX() == p.x && e.getY() == p.y) {
                         handlePlayerHit(session, p); // pierde vida y respawn / gameOver
                         hitThisTick = true;
                     }
                 }
+
 
                 // ===== FRUTAS =====
                 boolean fruitsChanged = false;
@@ -408,6 +431,10 @@ public class Server {
                     sendFruitsForPlayer(pid, session);
                 }
 
+                if (enemiesChangedThisTick){
+                    sendEnemiesForPlayer(pid, session);
+                }
+
                 // ===== META (G) =====
                 Character tileHere = tileAt(p.x, p.y);
                 if (tileHere != null && tileHere == 'G') {
@@ -419,10 +446,8 @@ public class Server {
                     resetFruitsFromTemplates(pid, session);
                 }
 
-            } catch (Exception ex) {
-                System.out.println("[JAVA] ERROR en tick() al procesar enemigos/frutas para jugador " + pid);
-                ex.printStackTrace();
-            }
+            
+        
         });
 
 
@@ -500,6 +525,7 @@ public class Server {
     playerClients.add(c);
     sessions.put(id, session);
     sendFruitsForPlayer(id, session);
+    sendEnemiesForPlayer(id, session);
 
     System.out.println("[JAVA] JOIN -> id=" + id + " name=" + name);
 }
@@ -1065,6 +1091,8 @@ public class Server {
         session.enemies.add(enemy);
         System.out.println("[ADMIN] CROCODILE " + type + " @" + liana + "," + y +
                 " → jugador " + playerId);
+
+        sendEnemiesForPlayer(playerId, session);
     }
 
     /**
@@ -1128,6 +1156,35 @@ public class Server {
 
         sendToPlayerAndSpectators(playerId, sb.toString());
     }
+
+    /**
+     * Envía al jugador (y sus espectadores) la lista completa de enemigos
+     * (cocodrilos) de su sesión actual.
+     */
+    private void sendEnemiesForPlayer(Integer playerId, GameSession session) {
+        if (session == null) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format(Locale.ROOT, "ENEMIES_BEGIN %d%n", playerId));
+
+        for (Enemy e : session.enemies) {
+            String type = e.getType();  // "RED" o "BLUE", según tu implementación
+            if (type == null) type = "GENERIC";
+
+            sb.append(String.format(
+                    Locale.ROOT,
+                    "ENEMY %s %d %d%n",
+                    type,
+                    e.getX(),
+                    e.getY()
+            ));
+        }
+
+        sb.append(String.format(Locale.ROOT, "ENEMIES_END %d%n", playerId));
+
+        sendToPlayerAndSpectators(playerId, sb.toString());
+    }
+
 
 
 
