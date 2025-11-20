@@ -14,15 +14,14 @@ public class RedCroc extends Enemy {
     private final int minLianaY;
     private final int maxLianaY;
 
-    /** Para hacerlo más lento: se mueve solo cada N ticks */
+    /** Contador de ticks para controlar la velocidad */
     private int tickCounter = 0;
-    private static final int SPEED_DIVIDER = 2; // prueba con 2 o 3
 
     public RedCroc(Integer x, Integer y) {
         this.x = x;
         this.y = y;
 
-        // Buscar todos los tiles '|' en esta columna y quedarnos con min y max
+        // Buscar todos los '|' en esta columna
         int minY = Integer.MAX_VALUE;
         int maxY = Integer.MIN_VALUE;
 
@@ -34,7 +33,7 @@ public class RedCroc extends Enemy {
         }
 
         if (minY == Integer.MAX_VALUE) {
-            // No hay liana en esta X: lo dejamos con un rango trivial
+            // No hay liana -> rango trivial
             minLianaY = y;
             maxLianaY = y;
             System.out.println("[RED] No se encontró liana en x=" + x);
@@ -43,27 +42,30 @@ public class RedCroc extends Enemy {
             maxLianaY = maxY;
         }
 
-        // Por si el admin lo puso mal, lo forzamos al rango de la liana
-        if (y < minLianaY) this.y = minLianaY;
-        if (y > maxLianaY) this.y = maxLianaY;
+        // Asegurarnos de que empieza dentro del rango
+        if (this.y < minLianaY) this.y = minLianaY;
+        if (this.y > maxLianaY) this.y = maxLianaY;
     }
 
     @Override
-    public void tick(Integer minY, Integer maxY) {
+    public void tick(Integer minY, Integer maxY, Integer level) {
         tickCounter++;
-        if (tickCounter % SPEED_DIVIDER != 0) {
-            return; // se queda quieto este tick → más lento
+
+        int lvl = (level == null || level < 1) ? 1 : level;
+        int stepTicks = 6 - lvl;   // lvl=1 → 5, lvl=2 → 4, ..., lvl>=5 → 1
+        if (stepTicks < 1) stepTicks = 1;
+
+        if (tickCounter % stepTicks != 0) {
+            return; // este tick no se mueve
         }
 
         int nextY = y + dir;
 
-        // Si llega a los extremos de la liana, cambia de dirección
         if (nextY > maxLianaY || nextY < minLianaY) {
             dir = -dir;
             nextY = y + dir;
         }
 
-        // Seguridad extra: nunca salgas de las casillas '|'
         if (!Server.isLianaAt(x, nextY)) {
             return;
         }
@@ -71,18 +73,8 @@ public class RedCroc extends Enemy {
         y = nextY;
     }
 
-    @Override
-    public Integer getX() {
-        return x;
-    }
 
-    @Override
-    public Integer getY() {
-        return y;
-    }
-
-    @Override
-    public String getType() {
-        return "RED";
-    }
+    @Override public Integer getX() { return x; }
+    @Override public Integer getY() { return y; }
+    @Override public String getType() { return "RED"; }
 }

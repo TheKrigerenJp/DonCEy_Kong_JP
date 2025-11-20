@@ -703,9 +703,12 @@ void run_player_mode(ClientState *state)
             } else {
                 /* === Movimiento normal sin SPACE === */
 
-                /* Izquierda / derecha siempre permitidas en el piso o liana */
-                if (IsKeyDown(KEY_LEFT))  dx = -1;
-                if (IsKeyDown(KEY_RIGHT)) dx = +1;
+                /* Un paso horizontal por tecla presionada (no por mantenerla) */
+                if (IsKeyPressed(KEY_LEFT)) {
+                    dx = -1;
+                } else if (IsKeyPressed(KEY_RIGHT)) {
+                    dx = +1;
+                }
 
                 /* ↑ / ↓ SOLO para trepar liana, y respetando techo */
                 if (onLianaTile && !hasCeilingAbove && IsKeyDown(KEY_UP)) {

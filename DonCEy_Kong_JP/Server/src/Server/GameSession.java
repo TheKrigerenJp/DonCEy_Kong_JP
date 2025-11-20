@@ -32,6 +32,8 @@ public class GameSession {
     public final List<Fruit> fruits  = new ArrayList<>();
     /** Hay enemigos o no */
     public Boolean hasEnemyChanges = false;
+    /** Indica si hay cambios pendientes de enemigos para mandar al cliente */
+    public Boolean enemiesDirty = false;
 
     /**
      * “Velocidad lógica” de enemigos para este jugador (pasos por tick).

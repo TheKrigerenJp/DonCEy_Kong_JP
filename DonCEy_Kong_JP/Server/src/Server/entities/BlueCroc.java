@@ -4,11 +4,9 @@ public class BlueCroc extends Enemy {
 
     private Integer x;
     private Integer y;
-
     private boolean active = true;
 
     private int tickCounter = 0;
-    private static final int SPEED_DIVIDER = 2; // o 3
 
     public BlueCroc(Integer x, Integer y) {
         this.x = x;
@@ -16,30 +14,29 @@ public class BlueCroc extends Enemy {
     }
 
     @Override
-    public void tick(Integer minY, Integer maxY) {
+    public void tick(Integer minY, Integer maxY, Integer level) {
         if (!active) return;
 
         tickCounter++;
-        if (tickCounter % SPEED_DIVIDER != 0) {
+
+        int lvl = (level == null || level < 1) ? 1 : level;
+        int stepTicks = 6 - lvl;
+        if (stepTicks < 1) stepTicks = 1;
+
+        if (tickCounter % stepTicks != 0) {
             return;
         }
 
         if (y > minY) {
-            y = y - 1;  // baja una casilla
+            y = y - 1;
         } else {
-            active = false; // llegó a y = 0 → desaparece
+            active = false;
         }
     }
 
-    @Override
-    public Boolean isActive() { return active; }
 
-    @Override
-    public Integer getX() { return x; }
-
-    @Override
-    public Integer getY() { return y; }
-
-    @Override
-    public String getType() { return "BLUE"; }
+    @Override public Boolean isActive() { return active; }
+    @Override public Integer getX() { return x; }
+    @Override public Integer getY() { return y; }
+    @Override public String getType() { return "BLUE"; }
 }

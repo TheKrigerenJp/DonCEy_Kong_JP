@@ -16,7 +16,7 @@ public abstract class Enemy {
      * @param minY valor mínimo permitido de la coordenada vertical (por ejemplo, borde superior de la zona de juego)
      * @param maxY valor máximo permitido de la coordenada vertical (por ejemplo, borde inferior de la zona de juego)
      */
-    public abstract void tick(Integer minY, Integer maxY);
+    public abstract void tick(Integer minY, Integer maxY, Integer level);
 
     /**
      * Obtiene la posición horizontal actual del enemigo.

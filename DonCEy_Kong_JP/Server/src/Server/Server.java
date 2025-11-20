@@ -127,7 +127,7 @@ public class Server {
         "..|..|..===".toCharArray(), // y=5
         "..|..|.....".toCharArray(), // y=6
         "..|==|.....".toCharArray(), // y=7
-        ".....|..===".toCharArray(), // y=8
+        ".....|.====".toCharArray(), // y=8
         ".....|....G".toCharArray(), // y=9
         ".....|==...".toCharArray()  // y=10
         
@@ -279,7 +279,7 @@ public class Server {
         serverSocket.bind(new InetSocketAddress("127.0.0.1", port));
         System.out.println("[JAVA] Servidor escuchando en puerto " + port + " ...");
 
-        ticker.scheduleAtFixedRate(this::tick, 100, 100, TimeUnit.MILLISECONDS);
+        ticker.scheduleAtFixedRate(this::tick, 125, 125, TimeUnit.MILLISECONDS);
         new Thread(this::adminLoop, "AdminConsole").start();
 
         while (!serverSocket.isClosed()) {
@@ -298,7 +298,7 @@ public class Server {
     }
 
     private Integer enemiesBroadcastCounter = 0;
-    private static final Integer ENEMIES_BROADCAST_EVERY = 5;
+    private static final Integer ENEMIES_BROADCAST_EVERY = 2;
 
     /* ========= TICK: procesa inputs, simula enemigos y notifica ========= */
     /**
@@ -313,59 +313,79 @@ public class Server {
      * </ol>
      */
     private void tick() {
-    // 1) inputs → posiciones (con límites) + ack
-    //    y detectamos quién se movió hacia arriba en este tick
-    Set<Integer> jumpedThisTick = new HashSet<>();
+        // 1) De TODOS los inputs pendientes, nos quedamos con el "mejor" de cada jugador:
+        //    - Preferimos saltos (dy > 0) sobre movimientos normales.
+        //    - A igual dy, preferimos el de mayor |dx| (p.ej. dx=±2 para salto horizontal).
+        Map<Integer, InputEvent> bestInputByPlayer = new HashMap<>();
 
-    InputEvent ev;
-    while ((ev = inputQueue.poll()) != null) {
-        Player p = players.get(ev.playerId);
-        if (p == null) continue;
+        InputEvent ev;
+        while ((ev = inputQueue.poll()) != null) {
+            if (ev == null) continue;
 
-        Integer oldY = p.y;
-        Integer nx = p.x + ev.dx;
-        Integer ny = p.y + ev.dy;
+            InputEvent prev = bestInputByPlayer.get(ev.playerId);
 
-        // Límites del mapa
-        if (nx < MIN_X) nx = MIN_X;
-        if (nx > MAX_X) nx = MAX_X;
-        if (ny < MIN_Y) ny = MIN_Y;
-        if (ny > MAX_Y) ny = MAX_Y;
-
-        // ==== COLISIÓN CON PAREDES (T y =) ====
-        Character dest = tileAt(nx, ny);
-        if (dest != null && (dest == 'T' || dest == '=')) {
-            // Choca con pared → NO se mueve
-            nx = p.x;
-            ny = p.y;
+            if (prev == null) {
+                bestInputByPlayer.put(ev.playerId, ev);
+            } else {
+                // 1) Si el nuevo tiene más "dy" (es salto y el otro no), gana el nuevo
+                if (ev.dy > prev.dy) {
+                    bestInputByPlayer.put(ev.playerId, ev);
+                }
+                // 2) Si tienen el mismo dy, preferimos el que tenga |dx| más grande
+                else if (ev.dy.equals(prev.dy)
+                        && Math.abs(ev.dx) > Math.abs(prev.dx)) {
+                    bestInputByPlayer.put(ev.playerId, ev);
+                }
+                // 3) En cualquier otro caso, mantenemos el anterior
+            }
         }
-        // ======================================
 
-        p.x = nx;
-        p.y = ny;
-        p.lastAckSeq = Math.max(p.lastAckSeq, ev.seq);
+        // Set para saber quién saltó en este tick (para la gravedad)
+        Set<Integer> jumpedThisTick = new HashSet<>();
 
-        // Si en este tick subió al menos 1 casilla, marcamos que "saltó"
-        if (ny > oldY) {
-            jumpedThisTick.add(ev.playerId);
+        // Aplicamos SOLO un movimiento por jugador en este tick
+        for (InputEvent input : bestInputByPlayer.values()) {
+            Player p = players.get(input.playerId);
+            if (p == null) continue;
+
+            Integer oldY = p.y;
+            Integer nx   = p.x + input.dx;
+            Integer ny   = p.y + input.dy;
+
+            // Límites del mapa
+            if (nx < MIN_X) nx = MIN_X;
+            if (nx > MAX_X) nx = MAX_X;
+            if (ny < MIN_Y) ny = MIN_Y;
+            if (ny > MAX_Y) ny = MAX_Y;
+
+            // Colisión con paredes (T y =)
+            Character dest = tileAt(nx, ny);
+            if (dest != null && (dest == 'T' || dest == '=')) {
+                nx = p.x;
+                ny = p.y;
+            }
+
+            p.x = nx;
+            p.y = ny;
+            p.lastAckSeq = Math.max(p.lastAckSeq, input.seq);
+
+            // Si en este tick subió al menos 1 casilla, marcamos que "saltó"
+            if (ny > oldY) {
+                jumpedThisTick.add(input.playerId);
+            }
         }
-    }
 
-
-        // 1b) GRAVEDAD + agua
+        // 1b) GRAVEDAD + agua (igual que ya lo tienes, usando jumpedThisTick)
         sessions.forEach((pid, session) -> {
             Player p = players.get(pid);
             if (p == null) return;
 
-            // Si NO saltó hacia arriba en este tick, se le aplica gravedad normal
             if (!jumpedThisTick.contains(pid)) {
-                // Gravedad: si NO hay nada sólido justo debajo, cae una casilla
                 if (p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
-                    p.y -= 1;  // y-- = cae hacia abajo
+                    p.y -= 1;
                 }
             }
 
-            // Agua: cuenta como golpe → pierde vida y respawn / gameOver
             if (isWater(p.x, p.y)) {
                 handlePlayerHit(session, p);
             }
@@ -381,17 +401,23 @@ public class Server {
 
             // Lista temporal para eliminar blue crocs que llegan a y=0
             List<Enemy> toRemove = new ArrayList<>();
+            Boolean enemiesChangedThisTick = false;
 
             for (Enemy e : session.enemies) {
                 int oldEx = e.getX();
                 int oldEy = e.getY();
 
-                e.tick(MIN_Y, MAX_Y);
+                e.tick(MIN_Y, MAX_Y, p.round);
 
                 // Si el enemigo dejó de estar activo (BlueCroc que llegó a y=0)
                 if (!e.isActive()) {
                     toRemove.add(e);
+                    enemiesChangedThisTick = true;
                     continue;
+                }
+
+                if (e.getX() != oldEx || e.getY() != oldEy){
+                    enemiesChangedThisTick = true;
                 }
 
                 // Colisión exacta con el jugador (misma casilla)
@@ -405,6 +431,10 @@ public class Server {
 
             if (!toRemove.isEmpty()) {
                 session.enemies.removeAll(toRemove);
+            }
+
+            if (enemiesChangedThisTick){
+                session.enemiesDirty = true;
             }
 
             // FRUTAS (tu código tal cual)
@@ -441,13 +471,11 @@ public class Server {
 
         // 2.5) Enviar enemigos solo cada ENEMIES_BROADCAST_EVERY ticks
         enemiesBroadcastCounter++;
-        boolean broadcastEnemiesNow = (enemiesBroadcastCounter % ENEMIES_BROADCAST_EVERY == 0);
-
-        if (broadcastEnemiesNow) {
+        if (enemiesBroadcastCounter % ENEMIES_BROADCAST_EVERY == 0) {
             sessions.forEach((pid, session) -> {
-                if (session.hasEnemyChanges) {
+                if (session.enemiesDirty) {
                     sendEnemiesForPlayer(pid, session);
-                    session.hasEnemyChanges = false;
+                    session.enemiesDirty = false;
                 }
             });
         }
