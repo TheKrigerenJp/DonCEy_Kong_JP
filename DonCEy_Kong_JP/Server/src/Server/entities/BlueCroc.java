@@ -1,94 +1,45 @@
 package Server.entities;
 
-/**
- * Representa un cocodrilo azul en el juego.
- * <p>
- * Este enemigo se desplaza hacia abajo y, cuando sale del límite inferior,
- * reaparece en el límite superior de la zona de juego.
- * </p>
- */
 public class BlueCroc extends Enemy {
-    /** Liana o columna del mapa donde se ubica el cocodrilo. */
-    private final Integer liana;
-    /** Posición vertical actual del cocodrilo. */
-    private Integer y;
-    /** Posición horizontal actual del cocodrilo. */
+
     private Integer x;
+    private Integer y;
 
-    private Boolean active = true;
+    private boolean active = true;
 
-    private Integer tickCounter = 0;
-    private static final Integer SPEED_DIVIDER = 3;
+    private int tickCounter = 0;
+    private static final int SPEED_DIVIDER = 2; // o 3
 
-    /**
-     * Crea un nuevo cocodrilo azul.
-     *
-     * @param liana columna o liana donde se colocará el enemigo
-     * @param y     posición vertical inicial del enemigo dentro de la liana
-     */
-    public BlueCroc(Integer liana, Integer y) {
-        this.liana = liana;
-        this.y = y;
+    public BlueCroc(Integer x, Integer y) {
         this.x = x;
+        this.y = y;
     }
 
-    /**
-     * Actualiza la posición del cocodrilo azul, desplazándolo hacia abajo.
-     * Si supera el límite inferior, su posición se reinicia en el límite superior.
-     *
-     * @param minY valor mínimo permitido de la coordenada Y
-     * @param maxY valor máximo permitido de la coordenada Y
-     */
     @Override
     public void tick(Integer minY, Integer maxY) {
         if (!active) return;
 
         tickCounter++;
         if (tickCounter % SPEED_DIVIDER != 0) {
-            return;  // quieto este tick → se ve más lento
+            return;
         }
 
         if (y > minY) {
-            // Baja una casilla hacia minY (que en tu mapa es y=0)
-            y = y - 1;
+            y = y - 1;  // baja una casilla
         } else {
-            // Ya llegó o pasó minY → desaparece
-            active = false;
+            active = false; // llegó a y = 0 → desaparece
         }
     }
 
-    /**
-     * Obtiene la posición horizontal actual del cocodrilo.
-     *
-     * @return coordenada X (liana o columna) donde se encuentra el cocodrilo
-     */
     @Override
-    public Integer getX() {
-        return liana;
-    }
+    public Boolean isActive() { return active; }
 
-    /**
-     * Obtiene la posición vertical actual del cocodrilo.
-     *
-     * @return coordenada Y actual del cocodrilo
-     */
     @Override
-    public Integer getY() {
-        return y;
-    }
+    public Integer getX() { return x; }
 
-    public Boolean isActive(){
-        return active;
-    }
-
-    /**
-     * Devuelve el tipo de enemigo.
-     *
-     * @return la cadena {@code "BLUE"}, que identifica a este enemigo como cocodrilo azul
-     */
     @Override
-    public String getType() {
-        return "BLUE";
-    }
+    public Integer getY() { return y; }
+
+    @Override
+    public String getType() { return "BLUE"; }
 }
-

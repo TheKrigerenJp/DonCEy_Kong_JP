@@ -297,6 +297,9 @@ public class Server {
         }
     }
 
+    private Integer enemiesBroadcastCounter = 0;
+    private static final Integer ENEMIES_BROADCAST_EVERY = 5;
+
     /* ========= TICK: procesa inputs, simula enemigos y notifica ========= */
     /**
      * El ciclo principal de simulación del juego (Game Loop).
@@ -374,81 +377,80 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-                Boolean hitThisTick = false;
+            boolean hitThisTick = false;
 
-                List<Enemy> toRemove = new ArrayList<>();
-                Boolean enemiesChangedThisTick = false;
+            // Lista temporal para eliminar blue crocs que llegan a y=0
+            List<Enemy> toRemove = new ArrayList<>();
 
-                for (Enemy e : session.enemies){
-                    Integer oldEx = e.getX();
-                    Integer oldEy = e.getY();
+            for (Enemy e : session.enemies) {
+                int oldEx = e.getX();
+                int oldEy = e.getY();
 
-                    e.tick(MIN_Y, MAX_Y);
+                e.tick(MIN_Y, MAX_Y);
 
-                    if (!e.isActive()){
-                        toRemove.add(e);
-                        enemiesChangedThisTick = true;
-                        continue;
-                    }
-
-                    if (e.getX() != oldEx || e.getY() != oldEy) {
-                    enemiesChangedThisTick = true;
-                    }
-
-                    if (!hitThisTick && e.getX() == p.x && e.getY() == p.y) {
-                        handlePlayerHit(session, p); // pierde vida y respawn / gameOver
-                        hitThisTick = true;
-                    }
+                // Si el enemigo dejó de estar activo (BlueCroc que llegó a y=0)
+                if (!e.isActive()) {
+                    toRemove.add(e);
+                    continue;
                 }
 
-
-                // ===== FRUTAS =====
-                boolean fruitsChanged = false;
-
-                if (session.fruits != null) {
-                    Iterator<Fruit> it = session.fruits.iterator();
-                    while (it.hasNext()) {
-                        Fruit f = it.next();
-                        if (f == null) continue;
-
-                        if (f.getX() == p.x && f.getY() == p.y) {
-                            // Por seguridad si usas wrappers Integer:
-                            Integer pts = f.getPoints();
-                            if (pts == null) pts = 0;
-
-                            p.score = (p.score == null ? 0 : p.score) + pts;
-
-                            it.remove();
-                            fruitsChanged = true;
-
-                            // si solo hay 1 fruta por casilla, puedes salir aquí:
-                            // break;
-                        }
-                    }
+                // Colisión exacta con el jugador (misma casilla)
+                if (!hitThisTick
+                        && e.getX().equals(p.x)
+                        && e.getY().equals(p.y)) {
+                    handlePlayerHit(session, p);
+                    hitThisTick = true;
                 }
+            }
 
-                if (fruitsChanged) {
-                    sendFruitsForPlayer(pid, session);
+            if (!toRemove.isEmpty()) {
+                session.enemies.removeAll(toRemove);
+            }
+
+            // FRUTAS (tu código tal cual)
+            boolean fruitsChanged = false;
+            Iterator<Fruit> it = session.fruits.iterator();
+            while (it.hasNext()) {
+                Fruit f = it.next();
+                if (f.getX().equals(p.x) && f.getY().equals(p.y)) {
+                    p.score += f.getPoints();
+                    it.remove();
+                    fruitsChanged = true;
                 }
+            }
+            if (fruitsChanged) {
+                sendFruitsForPlayer(pid, session);
+            }
 
-                if (enemiesChangedThisTick){
-                    sendEnemiesForPlayer(pid, session);
-                }
+            // META por tile...
+            Character tileHere = tileAt(p.x, p.y);
+            if (tileHere != null && tileHere == 'G') {
+                p.round++;
+                p.lives++;
+                p.x = session.spawnX;
+                p.y = session.spawnY;
+                p.gameOver = false;
+                resetFruitsFromTemplates(pid, session);
+            }
 
-                // ===== META (G) =====
-                Character tileHere = tileAt(p.x, p.y);
-                if (tileHere != null && tileHere == 'G') {
-                    p.round++;
-                    p.lives++;
-                    p.x = session.spawnX;
-                    p.y = session.spawnY;
-                    p.gameOver = false;
-                    resetFruitsFromTemplates(pid, session);
-                }
-
-            
-        
+            // 🔴 IMPORTANTE: enviar enemigos SIEMPRE en cada tick
+            sendEnemiesForPlayer(pid, session);
         });
+
+
+
+        // 2.5) Enviar enemigos solo cada ENEMIES_BROADCAST_EVERY ticks
+        enemiesBroadcastCounter++;
+        boolean broadcastEnemiesNow = (enemiesBroadcastCounter % ENEMIES_BROADCAST_EVERY == 0);
+
+        if (broadcastEnemiesNow) {
+            sessions.forEach((pid, session) -> {
+                if (session.hasEnemyChanges) {
+                    sendEnemiesForPlayer(pid, session);
+                    session.hasEnemyChanges = false;
+                }
+            });
+        }
 
 
 

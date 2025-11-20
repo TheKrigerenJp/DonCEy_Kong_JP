@@ -2,100 +2,85 @@ package Server.entities;
 
 import Server.Server;
 
-/**
- * Representa un cocodrilo rojo en el juego.
- * <p>
- * Este enemigo se mueve hacia arriba y hacia abajo entre dos límites verticales.
- * Cuando alcanza uno de los extremos, invierte su dirección de movimiento.
- * </p>
- */
 public class RedCroc extends Enemy {
-    /** Liana o columna del mapa donde se ubica el cocodrilo. */
-    private final Integer liana;
-    /** Posición vertical actual del cocodrilo. */
-    private Integer y;
-    /** Posición horizontal actual del cocodrilo */
+
     private Integer x;
-    /** Dirección de movimiento: +1 hacia abajo, -1 hacia arriba. */
-    private Integer dir = +1;
-    /** Contador de ticks para bajar la velocidad */
-    private Integer tickCounter = 0;
-    /** Se mueve solo cada 3 ticks -> más lento. */
-    private static final Integer SPEED_DIVIDER = 3;
+    private Integer y;
 
-    /**
-     * Crea un nuevo cocodrilo rojo.
-     *
-     * @param liana columna o liana donde se colocará el enemigo
-     * @param y     posición vertical inicial del enemigo dentro de la liana
-     */
-    public RedCroc(Integer liana, Integer y) {
-        this.liana = liana;
-        this.y = y;
+    /** +1 = sube, -1 = baja */
+    private int dir = +1;
+
+    /** Extremos de la liana para esta X */
+    private final int minLianaY;
+    private final int maxLianaY;
+
+    /** Para hacerlo más lento: se mueve solo cada N ticks */
+    private int tickCounter = 0;
+    private static final int SPEED_DIVIDER = 2; // prueba con 2 o 3
+
+    public RedCroc(Integer x, Integer y) {
         this.x = x;
-        System.out.println("[ENEMY] RedCroc creado fuera de liana en " + x + "," + y);
-    }
+        this.y = y;
 
-    /**
-     * Actualiza la posición del cocodrilo rojo dentro de los límites indicados.
-     * <ul>
-     *     <li>Si llega al límite superior ({@code minY}), cambia la dirección hacia abajo.</li>
-     *     <li>Si llega al límite inferior ({@code maxY}), cambia la dirección hacia arriba.</li>
-     * </ul>
-     *
-     * @param minY valor mínimo permitido de la coordenada Y
-     * @param maxY valor máximo permitido de la coordenada Y
-     */
-    @Override
-    public void tick(Integer minY, Integer maxY) {
-        tickCounter++;
-        // Solo se mueve cuando tickCounter es múltiplo de SPEED_DIVIDER
-        if (tickCounter % SPEED_DIVIDER != 0) {
-            return;
-        }
+        // Buscar todos los tiles '|' en esta columna y quedarnos con min y max
+        int minY = Integer.MAX_VALUE;
+        int maxY = Integer.MIN_VALUE;
 
-        Integer nextY = y + dir;
-
-        // Si se sale del mapa o intenta salirse de la liana, invertimos dirección
-        if (nextY < minY || nextY > maxY || !Server.isLianaAt(x, nextY)) {
-            dir = -dir;
-            nextY = y + dir;
-
-            // Si aún así no hay casilla válida, no se mueve este tick
-            if (nextY < minY || nextY > maxY || !Server.isLianaAt(x, nextY)) {
-                return;
+        for (int yy = Server.MIN_Y; yy <= Server.MAX_Y; yy++) {
+            if (Server.isLianaAt(x, yy)) {
+                if (yy < minY) minY = yy;
+                if (yy > maxY) maxY = yy;
             }
         }
 
-        // En este punto, sabemos que (x, nextY) sigue siendo una liana
+        if (minY == Integer.MAX_VALUE) {
+            // No hay liana en esta X: lo dejamos con un rango trivial
+            minLianaY = y;
+            maxLianaY = y;
+            System.out.println("[RED] No se encontró liana en x=" + x);
+        } else {
+            minLianaY = minY;
+            maxLianaY = maxY;
+        }
+
+        // Por si el admin lo puso mal, lo forzamos al rango de la liana
+        if (y < minLianaY) this.y = minLianaY;
+        if (y > maxLianaY) this.y = maxLianaY;
+    }
+
+    @Override
+    public void tick(Integer minY, Integer maxY) {
+        tickCounter++;
+        if (tickCounter % SPEED_DIVIDER != 0) {
+            return; // se queda quieto este tick → más lento
+        }
+
+        int nextY = y + dir;
+
+        // Si llega a los extremos de la liana, cambia de dirección
+        if (nextY > maxLianaY || nextY < minLianaY) {
+            dir = -dir;
+            nextY = y + dir;
+        }
+
+        // Seguridad extra: nunca salgas de las casillas '|'
+        if (!Server.isLianaAt(x, nextY)) {
+            return;
+        }
+
         y = nextY;
     }
 
-    /**
-     * Obtiene la posición horizontal actual del cocodrilo.
-     *
-     * @return coordenada X (liana o columna) donde se encuentra el cocodrilo
-     */
     @Override
     public Integer getX() {
-        return liana;
+        return x;
     }
 
-    /**
-     * Obtiene la posición vertical actual del cocodrilo.
-     *
-     * @return coordenada Y actual del cocodrilo
-     */
     @Override
     public Integer getY() {
         return y;
     }
 
-    /**
-     * Devuelve el tipo de enemigo.
-     *
-     * @return la cadena {@code "RED"}, que identifica a este enemigo como cocodrilo rojo
-     */
     @Override
     public String getType() {
         return "RED";

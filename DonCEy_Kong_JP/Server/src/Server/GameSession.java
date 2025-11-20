@@ -30,6 +30,8 @@ public class GameSession {
     public final List<Enemy> enemies = new ArrayList<>();
     /** Lista de frutas activas en la sesión de este jugador. */
     public final List<Fruit> fruits  = new ArrayList<>();
+    /** Hay enemigos o no */
+    public Boolean hasEnemyChanges = false;
 
     /**
      * “Velocidad lógica” de enemigos para este jugador (pasos por tick).
