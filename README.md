@@ -3,3 +3,5 @@
 
 - Revisión de datos simples:
   ctrl+f y buscar (int|boolean|double|long|float|short|byte|char)
+
+- Se debe revisar que todo tenga javadoc, comentarios así: /** */
