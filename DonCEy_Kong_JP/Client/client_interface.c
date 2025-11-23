@@ -383,32 +383,41 @@ draw_game_scene(const ClientState *state)
     if (state->gameOver) {
         /* Fondo oscuro semitransparente encima de todo */
         DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
-                      (Color){ 0, 0, 0, 200 });
+                    (Color){ 0, 0, 0, 200 });
 
-        /* Mensaje grande */
-        const char *msg = "¡HAS PERDIDO!";
-        int titleFont   = 40;
-        int msgWidth    = MeasureText(msg, titleFont);
-        int msgX        = (WINDOW_WIDTH - msgWidth) / 2;
-        int msgY        = WINDOW_HEIGHT / 2 - 80;
+        /* Título grande "Perdiste" */
+        const char *msg     = "¡HAS PERDIDO!";
+        int         titleFont = 40;
+        int         msgWidth  = MeasureText(msg, titleFont);
+        int         msgX      = (WINDOW_WIDTH - msgWidth) / 2;
+        int         msgY      = WINDOW_HEIGHT / 2 - 100;
         DrawText(msg, msgX, msgY, titleFont, RAYWHITE);
 
-        /* Botón "Volver a jugar" */
+        /* Score final en grande debajo del título */
+        const char *scoreMsg = TextFormat("Puntuación final: %d", state->score);
+        int         scoreFont  = 30;
+        int         scoreWidth = MeasureText(scoreMsg, scoreFont);
+        int         scoreX     = (WINDOW_WIDTH - scoreWidth) / 2;
+        int         scoreY     = msgY + titleFont + 10;
+        DrawText(scoreMsg, scoreX, scoreY, scoreFont, RAYWHITE);
+
+        /* Botón "Volver a jugar" debajo del score */
         const char *btnText   = "Volver a jugar";
         int         btnFont   = 24;
         int         btnWidth  = MeasureText(btnText, btnFont) + 40;
         int         btnHeight = 50;
         int         btnX      = (WINDOW_WIDTH - btnWidth) / 2;
-        int         btnY      = msgY + titleFont + 30;
+        int         btnY      = scoreY + scoreFont + 30;
 
         DrawRectangle(btnX, btnY, btnWidth, btnHeight,
-                      (Color){ 50, 80, 130, 255 });
+                    (Color){ 50, 80, 130, 255 });
         DrawRectangleLines(btnX, btnY, btnWidth, btnHeight, RAYWHITE);
 
         int textX = btnX + (btnWidth  - MeasureText(btnText, btnFont)) / 2;
         int textY = btnY + (btnHeight - btnFont) / 2;
         DrawText(btnText, textX, textY, btnFont, RAYWHITE);
     }
+
 }
 
 

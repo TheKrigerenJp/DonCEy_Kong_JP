@@ -16,6 +16,9 @@
 
 // ---------------- Mapa lógico recibido del servidor ----------------
 
+
+#define MAX_MAP_WIDTH   32
+#define MAX_MAP_HEIGHT  32
 /**
  * Representa el mapa lógico enviado por el servidor.
  *
@@ -25,9 +28,6 @@
  *            Cada carácter coincide con los usados por el servidor:
  *            'W', 'T', '=', '|', 'S', 'G' o '.'.
  */
-#define MAX_MAP_WIDTH   32
-#define MAX_MAP_HEIGHT  32
-
 typedef struct {
     int width;
     int height;
@@ -36,6 +36,13 @@ typedef struct {
 
 #define MAX_FRUITS  32
 
+/** 
+ * Representa la información de la fruta
+ * 
+ * x: la posición horizontal de la fruta
+ * y: la posición vertical de la fruta
+ * points: La cantidad de puntaje que dará la fruta
+ */
 typedef struct {
     int x;
     int y;
@@ -44,6 +51,13 @@ typedef struct {
 
 #define MAX_ENEMIES 32
 
+/** 
+ * Representa la información de los enemigos
+ * 
+ * x: la posición horizontal del enemigo
+ * y: la posición vertical del enemigo
+ * type: El tipo de enemigo, cocodrilo rojo o azul
+ */
 typedef struct {
     int x;
     int y;
@@ -55,6 +69,12 @@ typedef struct {
 
 #define MAX_PLAYERS 16
 
+/** 
+ * Representa la información del jugador 
+ * 
+ * id: es el numero asociado al jugador
+ * name: pues el nombre
+*/
 typedef struct {
     int  id;
     char name[32];
@@ -118,6 +138,9 @@ typedef struct {
  *  - playerY   : coordenada Y lógica del jugador (en tiles).
  *  - score     : puntuación actual del jugador.
  *  - gameOver  : indica si el servidor marca la partida como terminada.
+ *  - numPlayers: cantidad de jugadores en la partida
+ *  - numFruits : cantidad de frutas en la partida
+ *  - numEnemies: cantidad de enemigos en la partida
  */
 typedef struct {
     SOCKET socket_fd;

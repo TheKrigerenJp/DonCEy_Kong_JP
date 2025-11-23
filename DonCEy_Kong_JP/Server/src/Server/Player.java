@@ -27,20 +27,30 @@ public class Player {
     public Boolean gameOver;   
 
     /**
-     * Crea un nuevo jugador con los valores iniciales por defecto.
+     * Crea un nuevo jugador.
      *
-     * @param id    identificador único asignado por el servidor
-     * @param name  nombre o alias con el que el jugador se identifica
+     * @param id identificador único
+     * @param name nombre del jugador
+     * @param startX posición inicial X
+     * @param startY posición inicial Y
      */
     public Player(Integer id, String name) {
+         /** @return id del jugador */
         this.id = id;
+        /** @return nombre del jugador */
         this.name = name;
+        /** @return posición horizontal */
         this.x = 0;
+        /** @return posición vertical */
         this.y = 0;
         this.lastAckSeq = 0;
+        /** @return puntaje del jugador */
         this.score = 0;
+        /** @return ronda en la que esta el jugador */
         this.round = 1;
+        /** @return si el jugador perdio o no */
         this.gameOver = false;
+        /** @return cantidad de vidas del jugador */
         this.lives = 3;
     }
 }

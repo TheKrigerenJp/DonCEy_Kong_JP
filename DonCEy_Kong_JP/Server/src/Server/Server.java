@@ -184,22 +184,22 @@ public class Server {
      * Tiles que bloquean al subir (techo).
      * OJO: aquí NO incluimos 'G' para que la zona de ganar no bloquee el paso.
      */
-    private static boolean isBlockingCeiling(Character t) {
+    private static Boolean isBlockingCeiling(Character t) {
         return t == 'T'   // tierra
             || t == '='   // plataforma
             || t == 'S';  // spawn (por si hay uno encima)
         // 'G' (meta) a propósito NO se incluye
     }
 
-
-    private static boolean isLiana(Character t) {
+    /** Indica si el jugador se encuentra en una casilla que sea liana "|" */
+    private static Boolean isLiana(Character t) {
         return t != null && t == '|';
     }
 
     /**
      * Indica si en la posición (x, y) del mapa hay una liana ('|').
      */
-    public static boolean isLianaAt(Integer x, Integer y) {
+    public static Boolean isLianaAt(Integer x, Integer y) {
         return tileAt(x, y) == '|';
     }
 
@@ -209,7 +209,7 @@ public class Server {
      * (plataforma, tierra, liana, spawn o meta).
      * Ojo: el jugador está en (x, y) pero el bloque de apoyo está en (x, y-1).
      */
-    private static boolean hasSolidBelow(Integer x, Integer y) {
+    private static Boolean hasSolidBelow(Integer x, Integer y) {
         if (y <= MIN_Y) return false; // no hay nada más abajo
         Character below = tileAt(x, y - 1);
         return isSolidTile(below);
@@ -224,7 +224,7 @@ public class Server {
      *  - De pie sobre plataformas (jugador en '.', plataforma en y-1)
      *  - Colgado de lianas (jugador en '|')
      */
-    private static boolean isSupported(Integer x, Integer y) {
+    private static Boolean isSupported(Integer x, Integer y) {
         Character here = tileAt(x, y);
         // Si estoy parado en un tile sólido, ya con eso basta
         if (isSolidTile(here)) {
@@ -235,7 +235,7 @@ public class Server {
         return hasSolidBelow(x, y);
     }
 
-    private static boolean isPlatformLike(Character t) {
+    private static Boolean isPlatformLike(Character t) {
         return t != null && (t == '=' || t == 'T' || t == 'S');
     }
 
@@ -243,7 +243,7 @@ public class Server {
      * Indica si el jugador puede moverse una casilla hacia arriba desde (x,y),
      * sin atravesar un techo.
      */
-    private static boolean canMoveUpFrom(Integer x, Integer y) {
+    private static Boolean canMoveUpFrom(Integer x, Integer y) {
         Character here  = tileAt(x, y);
         Character above = tileAt(x, y + 1);
 
@@ -302,6 +302,7 @@ public class Server {
         }
     }
 
+    /** Contador de enemigos  */
     private Integer enemiesBroadcastCounter = 0;
     private static final Integer ENEMIES_BROADCAST_EVERY = 2;
 
@@ -380,21 +381,30 @@ public class Server {
             }
         }
 
-        // 1b) GRAVEDAD + agua (igual que ya lo tienes, usando jumpedThisTick)
+        // 1b) GRAVEDAD + agua
         sessions.forEach((pid, session) -> {
             Player p = players.get(pid);
             if (p == null) return;
 
+            // Tile actual donde está parado el jugador
+            Character here = tileAt(p.x, p.y);
+            Boolean onLiana = isLiana(here);
+
+            // Si NO saltó hacia arriba en este tick, se le aplica gravedad normal,
+            // PERO no cae si está colgado de una liana.
             if (!jumpedThisTick.contains(pid)) {
-                if (p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
-                    p.y -= 1;
+                // Gravedad: si NO hay nada sólido justo debajo Y no está en liana, cae una casilla
+                if (!onLiana && p.y > MIN_Y && !hasSolidBelow(p.x, p.y)) {
+                    p.y -= 1;  // y-- = cae hacia abajo
                 }
             }
 
+            // Agua: cuenta como golpe → pierde vida y respawn / gameOver
             if (isWater(p.x, p.y)) {
                 handlePlayerHit(session, p);
             }
         });
+
 
 
         // 2) Simulación de enemigos + colisiones
@@ -402,15 +412,15 @@ public class Server {
             Player p = players.get(pid);
             if (p == null) return;
 
-            boolean hitThisTick = false;
+            Boolean hitThisTick = false;
 
             // Lista temporal para eliminar blue crocs que llegan a y=0
             List<Enemy> toRemove = new ArrayList<>();
             Boolean enemiesChangedThisTick = false;
 
             for (Enemy e : session.enemies) {
-                int oldEx = e.getX();
-                int oldEy = e.getY();
+                Integer oldEx = e.getX();
+                Integer oldEy = e.getY();
 
                 e.tick(MIN_Y, MAX_Y, p.round);
 
@@ -443,7 +453,7 @@ public class Server {
             }
 
             // FRUTAS (tu código tal cual)
-            boolean fruitsChanged = false;
+            Boolean fruitsChanged = false;
             Iterator<Fruit> it = session.fruits.iterator();
             while (it.hasNext()) {
                 Fruit f = it.next();
@@ -468,7 +478,6 @@ public class Server {
                 resetFruitsFromTemplates(pid, session);
             }
 
-            // 🔴 IMPORTANTE: enviar enemigos SIEMPRE en cada tick
             sendEnemiesForPlayer(pid, session);
         });
 

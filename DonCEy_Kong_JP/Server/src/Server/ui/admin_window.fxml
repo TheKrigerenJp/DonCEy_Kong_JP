@@ -46,7 +46,7 @@
                                    GridPane.rowIndex="0" GridPane.columnIndex="1"
                                    prefWidth="160"/>
 
-                        <Label text="Columna (liana):"
+                        <Label text="Columna:"
                                GridPane.rowIndex="1" GridPane.columnIndex="0"/>
                         <TextField fx:id="crocLianaField"
                                    promptText="ej: 3"
@@ -86,7 +86,7 @@
                     </columnConstraints>
 
                     <children>
-                        <Label text="Columna (liana):"
+                        <Label text="Columna:"
                                GridPane.rowIndex="0" GridPane.columnIndex="0"/>
                         <TextField fx:id="fruitLianaField"
                                    promptText="ej: 4"
