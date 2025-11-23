@@ -71,7 +71,7 @@ typedef struct {
 /**
  * Alto de la ventana principal del cliente en píxeles.
  */
-#define WINDOW_HEIGHT  600
+#define WINDOW_HEIGHT  650
 
 // ---------------- Constantes de conexión al servidor ----------------
 

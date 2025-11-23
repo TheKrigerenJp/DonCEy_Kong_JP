@@ -119,20 +119,20 @@ public class Server {
      * Cada fila representa una coordenada Y y cada columna una coordenada X.
      */
     private static final char[][] MAP = {
-        "TTTWWTWTWWW....".toCharArray(), // y=0
+        "TTTWWTWTWWWWWWW".toCharArray(), // y=0
         "S==..=T..==....".toCharArray(), // y=1
         ".....T=...=....".toCharArray(), // y=2
         "..|.......=....".toCharArray(), // y=3
         "..|..|.........".toCharArray(), // y=4
-        "..|..|..===....".toCharArray(), // y=5
+        "..|..|===......".toCharArray(), // y=5
         "..|..|.........".toCharArray(), // y=6
-        "..|==|.........".toCharArray(), // y=7
-        ".....|.====....".toCharArray(), // y=8
-        "...............".toCharArray(), // y=9
-        "...............".toCharArray(), // y=10
-        "...............".toCharArray(), // y=11
-        "======.........".toCharArray(), // y=12
-        "G..............".toCharArray(), // y=13
+        "..|..|====.|.|.".toCharArray(), // y=7
+        "..|..|.....|.|.".toCharArray(), // y=8
+        "======.....|.|.".toCharArray(), // y=9
+        "........===|.|.".toCharArray(), // y=10
+        "........|..|.|.".toCharArray(), // y=11
+        "======..|..===.".toCharArray(), // y=12
+        "G.......|......".toCharArray(), // y=13
         "...............".toCharArray()  // y=14
         
         
