@@ -817,6 +817,8 @@ void run_spectator_mode(ClientState *state)
         return;
     }
 
+    state->spectateId=targetId;
+
     /* 2) Enviar SPECTATE <targetId> al servidor */
     snprintf(cmd, sizeof(cmd), "SPECTATE %d\n", targetId);
     send_line(state->socket_fd, cmd);
@@ -854,6 +856,10 @@ void run_spectator_mode(ClientState *state)
     state->score    = 0;
     state->gameOver = 0;
 
+    state->numFruits = 0;
+    state->numEnemies = 0;
+    int inFruitBlock = 0;
+    int inEnemyBlock = 0;
     /* 5) Bucle de renderizado en modo espectador */
     while (!WindowShouldClose()) {
 
@@ -867,28 +873,105 @@ void run_spectator_mode(ClientState *state)
             break; /* desconexión o error */
         }
 
-        /* Podemos recibir muchas cosas, pero solo nos interesa STATE */
         char tag[16];
-        char gameOverStr[8];
-        int  s, pid, x, y, score;
+        if (sscanf(line, "%15s", tag) != 1) {
+            continue;
+        }
 
-        if (sscanf(line, "%15s %d %d %d %d %d %7s",
-                   tag, &s, &pid, &x, &y, &score, gameOverStr) == 7 &&
-            strcmp(tag, "STATE") == 0) {
+        /* ====== STATE: posición, score, nivel, vidas, gameOver ====== */
+        if (strcmp(tag, "STATE") == 0) {
+            int  s, pid, x, y, score, level, lives;
+            char gameOverStr[8];
 
-            if (pid == state->playerId) {
-                state->playerX  = x;
-                state->playerY  = y;
-                state->score    = score;
-                state->gameOver = (strcmp(gameOverStr, "true") == 0);
+            if (sscanf(line, "%15s %d %d %d %d %d %d %d %7s",
+                       tag, &s, &pid, &x, &y, &score, &level, &lives, gameOverStr) == 9) {
+
+                if (pid == state->playerId) {
+                    state->playerX  = x;
+                    state->playerY  = y;
+                    state->score    = score;
+                    state->level    = level;
+                    state->lives    = lives;
+                    state->gameOver = (strcmp(gameOverStr, "true") == 0);
+                }
             }
         }
-        /* Si no es STATE, lo ignoramos */
 
+        /* ====== FRUITS_BEGIN: comienza lista de frutas ====== */
+        else if (strcmp(tag, "FRUITS_BEGIN") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inFruitBlock     = 1;
+                state->numFruits = 0;
+            }
+        }
+        /* ====== FRUIT x y pts ====== */
+        else if (strcmp(tag, "FRUIT") == 0) {
+            if (inFruitBlock) {
+                int fx, fy, pts;
+                if (sscanf(line, "%*s %d %d %d", &fx, &fy, &pts) == 3) {
+                    if (state->numFruits < MAX_FRUITS) {
+                        FruitInfo *f = &state->fruits[state->numFruits++];
+                        f->x      = fx;
+                        f->y      = fy;
+                        f->points = pts;
+                    }
+                }
+            }
+        }
+        /* ====== FRUITS_END ====== */
+        else if (strcmp(tag, "FRUITS_END") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inFruitBlock = 0;
+            }
+        }
+
+        /* ====== ENEMIES_BEGIN: comienza lista de enemigos ====== */
+        else if (strcmp(tag, "ENEMIES_BEGIN") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inEnemyBlock     = 1;
+                state->numEnemies = 0;
+            }
+        }
+        /* ====== ENEMY <type> <x> <y> ====== */
+        else if (strcmp(tag, "ENEMY") == 0) {
+            if (inEnemyBlock) {
+                char typeStr[16];
+                int  ex, ey;
+
+                if (sscanf(line, "%*s %15s %d %d", typeStr, &ex, &ey) == 3) {
+                    if (state->numEnemies < MAX_ENEMIES) {
+                        EnemyInfo *e = &state->enemies[state->numEnemies++];
+                        e->x = ex;
+                        e->y = ey;
+
+                        if (strcmp(typeStr, "RED") == 0) {
+                            e->type = 1;
+                        } else if (strcmp(typeStr, "BLUE") == 0) {
+                            e->type = 2;
+                        } else {
+                            e->type = 0;
+                        }
+                    }
+                }
+            }
+        }
+        /* ====== ENEMIES_END ====== */
+        else if (strcmp(tag, "ENEMIES_END") == 0) {
+            int pid = 0;
+            if (sscanf(line, "%*s %d", &pid) == 1 && pid == state->playerId) {
+                inEnemyBlock = 0;
+            }
+        }
+
+        /* --- Dibujar escena igual que en modo jugador --- */
         BeginDrawing();
             draw_game_scene(state);
         EndDrawing();
     }
+
 
     /* Al salir del bucle, simplemente volvemos al menú principal */
 }

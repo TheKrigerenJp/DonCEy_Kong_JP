@@ -166,6 +166,8 @@ typedef struct {
     int numEnemies;
     EnemyInfo enemies[MAX_ENEMIES];
 
+    int spectateId;
+
 } ClientState;
 
 
